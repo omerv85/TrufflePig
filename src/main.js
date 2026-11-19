@@ -4,6 +4,7 @@ import { streamDist, waterLevel, waterDepth } from './noise.js';
 import { createBarn } from './barn.js';
 import { Hud } from './hud.js';
 import { TruffleHunt } from './truffles.js';
+import { Birds } from './birds.js';
 import { createPig } from './pig.js';
 import { Joystick } from './joystick.js';
 import { Ambience } from './audio.js';
@@ -331,6 +332,9 @@ const hunt = new TruffleHunt({
   onSqueal: (e) => { if (!sniffEl.classList.contains('show')) showBubble(e > 0.8 ? 'squee! squee!' : 'squee!'); },
 });
 
+// ---------- birds on the forest floor ----------
+const birds = new Birds({ scene, forest, audio });
+
 // ---------- snort behaviour ----------
 const SNORT_LEN = 1.7;
 let snortT = -1;
@@ -457,6 +461,7 @@ function update(dt) {
 
   forest.update(player.pos, 2);
   if (started) hunt.update(dt, player);
+  birds.update(dt, player, started);
 }
 
 const _headWorld = new THREE.Vector3();
@@ -511,4 +516,4 @@ function frame(now) {
 requestAnimationFrame(frame);
 
 // For debugging in the console.
-window.__game = { player, forest, camera, renderer, scene, audio, hud, hunt, setPaused, sky, snortNow: () => { nextSnort = 0; } };
+window.__game = { player, forest, camera, renderer, scene, audio, hud, hunt, birds, setPaused, sky, snortNow: () => { nextSnort = 0; } };

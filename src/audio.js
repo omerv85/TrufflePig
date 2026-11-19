@@ -317,6 +317,7 @@ export class Ambience {
       oink: ['assets/sounds/pig-oink.mp3', 1.0],
       porco: ['assets/sounds/pig-porco.mp3', 1.7],
       excited: ['assets/sounds/pig-grunting-excitedly.mp3', 0.75],
+      wings: ['assets/sounds/bird-wings.mp3', 1.0],
     };
     this.samples = {};
     await Promise.all(Object.entries(files).map(async ([name, [url, gain]]) => {
@@ -352,6 +353,13 @@ export class Ambience {
     src.connect(g).connect(p).connect(this.master);
     src.start(t, offset, duration);
     return true;
+  }
+
+  // A startled flock bursting up into the air.
+  wings({ vol = 1, pan = 0 } = {}) {
+    if (!this.ctx) return;
+    // the recording is near-silent for its first second; start where the flapping builds up
+    this.playSample('wings', { vol, pan, rate: rand(0.94, 1.08), offset: 1.3, duration: 2.0, fade: 0.06 });
   }
 
   // Catching a whiff of truffle on the breeze.

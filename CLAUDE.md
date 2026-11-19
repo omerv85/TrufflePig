@@ -45,10 +45,13 @@ voice is recorded.
 - `src/barn.js`: the barn at the start point (`createBarn`), with a box collider.
 - `src/truffles.js`: the truffle hunt (`TruffleHunt`): mist particles, scent clouds, excitement, squeals, digging,
   the reward.
+- `src/birds.js`: songbirds on the forest floor (`Birds`): little flocks that hop and peck, and burst up and fly
+  away when the pig comes close (`SCARE` 4.5 m + 1 m per m/s of pig speed), with the wing-flap recording.
 - `src/audio.js`: `Ambience`: synthesized breeze, leaf gusts, insect drone, cicadas, birds, brook, splashes,
   footsteps, digging, chime; recorded pig calls (`loadSamples`, `playSample`).
 - `assets/sounds/*.mp3`: pig recordings from Pixabay (Pixabay Content License; credits in `README.md`):
-  `pig-grunt.mp3`, `pig-oink.mp3`, `pig-porco.mp3`, `pig-grunting-excitedly.mp3`.
+  `pig-grunt.mp3`, `pig-oink.mp3`, `pig-porco.mp3`, `pig-grunting-excitedly.mp3`, plus `bird-wings.mp3` (flock taking off;
+  played from 1.3 s because the file starts near-silent).
 - `share.jpg` (1200×630): the link-preview picture WhatsApp and others show (`og:image` in `index.html`). A real
   frame of the game (sunlit pig behind a tree with truffle mist, feather clouds) with "TrufflePig" and "Follow your nose
   to the truffles" drawn on top in Caveat. Made by rendering the scene at 1200×630 in the browser from a staged spot
@@ -179,6 +182,12 @@ Truffles (owner asked for them to be scarce, with a long trail to follow)
 Streams
 - Small streams the pig can wade through: slower in water (up to 40%), splashes instead of footsteps, ripple rings,
   a babbling-brook sound that fades in within ~25 m. Sandy banks, reeds and cattails, pebbles. Shown on the minimap.
+
+Birds
+- Up to 3 flocks of 2-5 pastel songbirds (robin, bluebird, finch, sparrow; mostly one species per flock) land
+  20-32 m ahead of the pig on dry ground away from trunks, rocks and the barn. They peck and hop; grounded flocks
+  over 60 m away are removed. When the pig gets close the whole flock takes off away from it with one wing-flap
+  sound (panned and quieter with distance) and is removed after 4 s of flight.
 
 ## Ideas discussed but not built
 - Enemies (the owner's next step after truffles).
