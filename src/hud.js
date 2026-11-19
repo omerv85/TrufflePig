@@ -2,11 +2,11 @@
 
 import { streamDist, STREAM_HALF } from './noise.js';
 
-const MAP_RANGE = 48; // metres from the pig to the map rim
+export const MAP_RANGE = 70; // metres from the pig to the map rim (reaches past where the haze hides a wolf)
 
 // Streams are expensive to sample, so they're painted into a cached world-aligned
 // layer that is only rebuilt after the pig has moved a fair way.
-const WATER_PX = 96, WATER_M = 1.5;           // layer covers 144 m square
+const WATER_PX = 128, WATER_M = 1.6;          // layer covers 205 m square
 const WATER_REBUILD = 20;
 
 export class Hud {
@@ -59,7 +59,8 @@ export class Hud {
   }
 
   // Draws the map rotated so the pig always faces up.
-  drawMap(player, barn, forest) {
+  // wolf: { x, z, angry } or null.
+  drawMap(player, barn, forest, wolf) {
     // Padding around the map circle leaves room for the barn icon sitting on the rim.
     const PAD = 11;
     const g = this.ctx, S = this.size, c = S / 2, R = c - PAD;
@@ -153,6 +154,19 @@ export class Hud {
 
     drawBarn(g, bx, by, onRim ? 0.9 : 1);
 
+    // the wolf, only once it's inside the map
+    if (wolf) {
+      let [wx, wy] = toMap(wolf.x, wolf.z);
+      const wd = Math.hypot(wx - c, wy - c);
+      if (wd < R - 4) {
+        // near the edge, keep the whole head inside the circle
+        const maxD = R - 13;
+        if (wd > maxD) { wx = c + ((wx - c) / wd) * maxD; wy = c + ((wy - c) / wd) * maxD; }
+        const pulse = wolf.angry ? 1 + 0.15 * Math.sin(performance.now() / 90) : 1;
+        drawWolf(g, wx, wy, pulse, wolf.angry);
+      }
+    }
+
     // pig nose at the centre
     drawNose(g, c, c);
   }
@@ -194,6 +208,60 @@ function drawNose(g, x, y) {
   for (const s of [-1, 1]) {
     g.beginPath();
     g.ellipse(s * 3.6, 0, 1.8, 3, 0, 0, Math.PI * 2);
+    g.fill();
+  }
+  g.restore();
+}
+
+// Grey wolf head: pointy ears, pale muzzle, yellow eyes. Red glow when it's growling.
+function drawWolf(g, x, y, k, angry) {
+  g.save();
+  g.translate(x, y);
+  g.scale(k, k);
+  if (angry) {
+    g.fillStyle = 'rgba(230, 70, 80, 0.35)';
+    g.beginPath();
+    g.arc(0, 0, 13, 0, Math.PI * 2);
+    g.fill();
+  }
+  g.shadowColor = 'rgba(40, 30, 50, 0.45)';
+  g.shadowBlur = 4;
+  g.fillStyle = '#6f6a78';
+  g.strokeStyle = '#fffaf2';
+  g.lineWidth = 1.6;
+  g.lineJoin = 'round';
+  // head outline: ears up top, cheeks, narrowing to the chin
+  g.beginPath();
+  g.moveTo(-8.5, -10);   // left ear tip
+  g.lineTo(-3, -5);
+  g.lineTo(3, -5);
+  g.lineTo(8.5, -10);    // right ear tip
+  g.lineTo(8, -1);
+  g.lineTo(9.5, 3);      // right cheek tuft
+  g.lineTo(3.5, 5);
+  g.lineTo(0, 9);        // chin
+  g.lineTo(-3.5, 5);
+  g.lineTo(-9.5, 3);
+  g.lineTo(-8, -1);
+  g.closePath();
+  g.fill();
+  g.shadowBlur = 0;
+  g.stroke();
+  // pale muzzle and dark nose
+  g.fillStyle = '#d4ced6';
+  g.beginPath();
+  g.moveTo(-3.5, 1); g.lineTo(3.5, 1); g.lineTo(2.2, 7); g.lineTo(0, 8.5); g.lineTo(-2.2, 7);
+  g.closePath();
+  g.fill();
+  g.fillStyle = '#2a2630';
+  g.beginPath();
+  g.ellipse(0, 3.2, 1.9, 1.3, 0, 0, Math.PI * 2);
+  g.fill();
+  // slanted yellow eyes
+  g.fillStyle = '#ffd84a';
+  for (const s of [-1, 1]) {
+    g.beginPath();
+    g.ellipse(s * 4, -1.5, 1.8, 1.1, s * 0.4, 0, Math.PI * 2);
     g.fill();
   }
   g.restore();

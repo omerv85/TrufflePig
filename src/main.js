@@ -2,9 +2,10 @@ import * as THREE from 'three';
 import { Forest, createForestMaterial, createWaterMaterial, terrainHeight, BARN_POS } from './forest.js';
 import { streamDist, waterLevel, waterDepth } from './noise.js';
 import { createBarn } from './barn.js';
-import { Hud } from './hud.js';
+import { Hud, MAP_RANGE } from './hud.js';
 import { TruffleHunt } from './truffles.js';
 import { Birds } from './birds.js';
+import { Wolves } from './wolf.js';
 import { createPig } from './pig.js';
 import { Joystick } from './joystick.js';
 import { Ambience } from './audio.js';
@@ -233,7 +234,6 @@ document.getElementById('play').addEventListener('click', () => {
   nextSnort = 3 + Math.random() * 3;
   document.getElementById('start').classList.add('hide');
   pauseBtn.classList.remove('hidden');
-  shareBtn.classList.remove('hidden');
   applyHalt();
 });
 
@@ -245,7 +245,8 @@ const soundBtn = document.getElementById('sound');
 const rotateEl = document.getElementById('rotate');
 let paused = false;
 let needsRotate = false;
-const halted = () => paused || needsRotate;
+let gameOver = false;
+const halted = () => paused || needsRotate || gameOver;
 
 function applyHalt() {
   const h = halted();
@@ -255,7 +256,7 @@ function applyHalt() {
 }
 
 function setPaused(p) {
-  if (!started) return;
+  if (!started || gameOver) return;
   paused = p;
   pauseEl.classList.toggle('hidden', !p);
   applyHalt();
@@ -317,20 +318,22 @@ showFsButton();
 fsBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
 fsBtn.addEventListener('click', enterFullscreen);
 // ---------- WhatsApp share ----------
-// Bottom-right button: opens WhatsApp (the app on phones, WhatsApp Web on desktop) with a message
-// saying how many truffles were found and inviting the friend to beat it.
+// In the pause menu and on the game-over screen: opens WhatsApp (the app on phones, WhatsApp Web
+// on desktop) with a message saying how many truffles were found and inviting the friend to beat it.
 const GAME_URL = 'https://trufflepig.o-vertman.workers.dev/';
-const shareBtn = document.getElementById('share-btn');
-function shareText(n) {
-  const found = n === 0 ? "I'm hunting for truffles in the forest in TrufflePig 🐷"
-    : `I found ${n} truffle${n === 1 ? '' : 's'} in the forest in TrufflePig 🐷`;
+const plural = (n) => `${n} truffle${n === 1 ? '' : 's'}`;
+function shareText(n, caught) {
+  const found = caught
+    ? (n === 0 ? 'A wolf got me in the forest in TrufflePig 🐷🐺' : `I found ${plural(n)} in TrufflePig 🐷 before a wolf got me 🐺`)
+    : (n === 0 ? "I'm hunting for truffles in the forest in TrufflePig 🐷" : `I found ${plural(n)} in the forest in TrufflePig 🐷`);
   return `${found}
 How many can you find? ${GAME_URL}`;
 }
-shareBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
-shareBtn.addEventListener('click', () => {
-  window.open('https://wa.me/?text=' + encodeURIComponent(shareText(hud.truffles)), '_blank', 'noopener');
-});
+function share(caught) {
+  window.open('https://wa.me/?text=' + encodeURIComponent(shareText(hud.truffles, caught)), '_blank', 'noopener');
+}
+document.getElementById('pause-share').addEventListener('click', () => share(false));
+document.getElementById('go-share').addEventListener('click', () => share(true));
 
 function isTouch() { return isPhone || 'ontouchstart' in window; }
 
@@ -351,6 +354,53 @@ const hunt = new TruffleHunt({
 
 // ---------- birds on the forest floor ----------
 const birds = new Birds({ scene, forest, audio });
+
+// ---------- the wolf (danger, and the way the game ends) ----------
+const flashEl = document.getElementById('flash');
+const gameOverEl = document.getElementById('gameover');
+let knock = 0;      // 0..1 the pig bowled over by the wolf
+let knocked = false;
+let camPull = 0;    // 0..1 camera pulls back to show the attack
+const wolves = new Wolves({
+  scene, forest, audio, barn: BARN_POS, mapRange: MAP_RANGE,
+  onPounce: () => {
+    knocked = true;
+    flashEl.classList.remove('hit');
+    void flashEl.offsetWidth;
+    flashEl.classList.add('hit');
+    audio.playSample('porco', { offset: 0.1, duration: 0.7, rate: 1.25, vol: 1.1, fade: 0.04 }); // a frightened squeal
+  },
+  onGameOver: () => showGameOver(),
+});
+
+function showGameOver() {
+  gameOver = true;
+  const n = hud.truffles;
+  document.getElementById('go-count').textContent = n;
+  document.getElementById('go-word').textContent = n === 1 ? 'truffle' : 'truffles';
+  gameOverEl.classList.remove('hidden');
+  pauseBtn.classList.add('hidden');
+  applyHalt();
+}
+
+// New game: back to the barn with an empty basket; the truffles grow back.
+document.getElementById('new-game').addEventListener('click', () => {
+  wolves.reset();
+  hunt.reset();
+  forest.collected.clear();
+  hud.setTruffles(0);
+  player.pos.set(0, terrainHeight(0, 0), 0);
+  Object.assign(player, { heading: 0, speed: 0, turnVel: 0, pitch: 0 });
+  knock = 0; knocked = false; camPull = 0;
+  snortT = -1; nextSnort = 3 + Math.random() * 3;
+  flashEl.classList.remove('hit');
+  forest.update(player.pos, Infinity);
+  cameraTargets(camPos, camLook);
+  gameOver = false;
+  gameOverEl.classList.add('hidden');
+  pauseBtn.classList.remove('hidden');
+  applyHalt();
+});
 
 // ---------- snort behaviour ----------
 const SNORT_LEN = 1.7;
@@ -396,17 +446,20 @@ const _tmp = new THREE.Vector3();
 function cameraTargets(outPos, outLook) {
   const h = player.heading, p = player.pos;
   _fwd.set(-Math.sin(h), 0, -Math.cos(h));
-  outPos.set(p.x - _fwd.x * CAM_BACK, p.y + CAM_UP, p.z - _fwd.z * CAM_BACK);
+  const back = CAM_BACK + 2.6 * camPull, up = CAM_UP + 0.8 * camPull;
+  outPos.set(p.x - _fwd.x * back, p.y + up, p.z - _fwd.z * back);
   const floor = terrainHeight(outPos.x, outPos.z) + 0.7;
   if (outPos.y < floor) outPos.y = floor;
-  outLook.set(p.x + _fwd.x * LOOK_AHEAD, p.y + LOOK_UP, p.z + _fwd.z * LOOK_AHEAD);
+  const ahead = LOOK_AHEAD - 4 * camPull;
+  outLook.set(p.x + _fwd.x * ahead, p.y + LOOK_UP - 0.3 * camPull, p.z + _fwd.z * ahead);
 }
 cameraTargets(camPos, camLook);
 
 // ---------- loop ----------
 function update(dt) {
   // Movement from joystick: direction steers, distance from the press point sets speed.
-  const inp = started ? readInput() : { x: 0, y: 0, mag: 0 };
+  const attacked = wolves.attacking;
+  const inp = started && !attacked ? readInput() : { x: 0, y: 0, mag: 0 };
   let targetSpeed = 0, targetTurn = 0;
   if (inp.mag > 0.08) {
     const ang = Math.atan2(inp.x, -inp.y); // 0 = straight ahead, +right
@@ -425,6 +478,16 @@ function update(dt) {
     diff = Math.atan2(Math.sin(diff), Math.cos(diff));
     targetTurn = THREE.MathUtils.clamp(diff * 6, -MAX_TURN, MAX_TURN);
   }
+
+  // The wolf is charging: the pig freezes and turns to face it.
+  if (attacked) {
+    targetSpeed = 0;
+    const w = wolves.pos;
+    const want = Math.atan2(-(w.x - player.pos.x), -(w.z - player.pos.z));
+    const diff = Math.atan2(Math.sin(want - player.heading), Math.cos(want - player.heading));
+    targetTurn = knocked ? 0 : THREE.MathUtils.clamp(diff * 8, -6, 6);
+  }
+  camPull = damp(camPull, attacked ? 1 : 0, 3, dt);
 
   // Wading through a stream slows the pig down.
   const depth = waterDepth(player.pos.x, player.pos.z);
@@ -462,6 +525,7 @@ function update(dt) {
   // Babbling brook gets louder near water.
   audio.setWater(1 - smooth(Math.min(1, Math.max(0, (streamDist(player.pos.x, player.pos.z) - 2) / 26))));
 
+  if (knocked) knock = Math.min(1, knock + dt / 0.35);
   pig.root.position.copy(player.pos);
   pig.root.rotation.y = player.heading;
   pig.root.rotation.x = player.pitch;
@@ -475,9 +539,11 @@ function update(dt) {
     dig: hunt.digAmount,
     digPhase: hunt.digPhase,
   });
+  if (knock > 0) pig.root.rotation.z = smooth(knock) * 1.4; // bowled over onto its side
 
   forest.update(player.pos, 2);
-  if (started) hunt.update(dt, player);
+  if (started && !attacked) hunt.update(dt, player);
+  if (started) wolves.update(dt, player);
   birds.update(dt, player, started);
 }
 
@@ -525,7 +591,7 @@ function frame(now) {
   sun.position.copy(player.pos).addScaledVector(sunDir, 70);
   motes.update(time.value, player.pos);
   updateSniffLabel();
-  hud.drawMap(player, BARN_POS, forest);
+  hud.drawMap(player, BARN_POS, forest, wolves.visibleOnMap ? { x: wolves.pos.x, z: wolves.pos.z, angry: wolves.state !== 'walk' } : null);
 
   renderer.render(scene, camera);
   requestAnimationFrame(frame);
@@ -533,4 +599,4 @@ function frame(now) {
 requestAnimationFrame(frame);
 
 // For debugging in the console.
-window.__game = { player, forest, camera, renderer, scene, audio, hud, hunt, birds, setPaused, sky, snortNow: () => { nextSnort = 0; } };
+window.__game = { player, forest, camera, renderer, scene, audio, hud, hunt, birds, wolves, setPaused, sky, snortNow: () => { nextSnort = 0; } };

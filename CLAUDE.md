@@ -20,7 +20,8 @@ hidden in the ground beside tree trunks, digs them up, and can find its way back
 using the minimap. **Phones play in landscape** (an upright phone gets a "Turn your phone sideways" screen); test at
 812×375. Desktop works with mouse or keyboard.
 
-Planned next (owner's roadmap): **enemies**. Nothing for them is built yet.
+Danger: a **wolf** prowls the forest (one at a time). Getting too close to it ends the game (game-over screen with
+Share and New game).
 
 ## Files
 
@@ -47,13 +48,18 @@ voice is recorded.
   the reward.
 - `src/birds.js`: songbirds on the forest floor (`Birds`): little flocks that hop and peck, and burst up and fly
   away when the pig comes close (`SCARE` 4.5 m + 1 m per m/s of pig speed), with the wing-flap recording.
+- `src/wolf.js`: the wolf (`Wolves`): low-poly grey model with yellow eyes, a broad chest, thick mane and big shaggy
+  cheek ruffs with pointed tufts (enlarged at the owner's request), the prowl/stare/attack state
+  machine, howl and growl sounds. Tuning constants at the top.
 - `src/audio.js`: `Ambience`: synthesized breeze, leaf gusts, insect drone, cicadas, birds, brook, splashes,
   footsteps, digging, chime; recorded pig calls (`loadSamples`, `playSample`).
 - `assets/sounds/*.mp3`: pig recordings from Pixabay (Pixabay Content License; credits in `README.md`):
   `pig-grunt.mp3`, `pig-oink.mp3`, `pig-porco.mp3`, `pig-grunting-excitedly.mp3`, plus `bird-wings.mp3` (flock taking off;
   played from 1.3 s because the file starts near-silent), and `creek.mp3` (freesound_community "small creek", the
   brook near streams: a 19.8 s loop with its ends crossfaded in `startCreek`; the old synthesized babble is only a
-  fallback if it fails to load).
+  fallback if it fails to load). Wolf sounds: `wolf-howl.mp3` (DRAGON-STUDIO "howling wolves", 7.6 s, played once when
+  a wolf comes into minimap range) and `wolf-growl.mp3` (alice_soundz "scary wolf growling", 36 s; random 2.6-3.6 s
+  slices chained while the wolf stares, and a louder sped-up slice as the snarl when it charges).
 - `share.jpg` (1200×630): the link-preview picture WhatsApp and others show (`og:image` in `index.html`). A real
   frame of the game (sunlit pig behind a tree with truffle mist, feather clouds) with "TrufflePig" and "Follow your nose
   to the truffles" drawn on top in Caveat. Made by rendering the scene at 1200×630 in the browser from a staged spot
@@ -92,13 +98,14 @@ Owner preferences:
 - Open it at phone size in landscape (812×375), tap "Tap to start" (it also unlocks audio). The browser pane's
   "mobile" preset is portrait and emulates touch, so it shows the rotate screen; a custom 812×375 size doesn't count
   as a phone. The pane also blocks full screen, so that can only be checked on a real phone. From the console:
-  `window.__game = { player, forest, camera, renderer, scene, audio, hud, hunt, setPaused, sky, snortNow }`, e.g. teleport with `player.pos.set(...)`,
+  `window.__game = { player, forest, camera, renderer, scene, audio, hud, hunt, birds, wolves, setPaused, sky, snortNow }`, e.g. teleport with `player.pos.set(...)`,
   turn with `player.heading`, find truffles with `[...forest.nearbyTruffles(x, z, range)]`, set the counter with
-  `hud.setTruffles(n)`, trigger a nose raise with `snortNow()`. Modules can be imported directly
+  `hud.setTruffles(n)`, trigger a nose raise with `snortNow()`, bring a wolf now with `wolves.timer = 0` (then
+  move it with `wolves.pos.set(...)`; a wolf within 26 m stares, within 12 m attacks). Modules can be imported directly
   (`await import('/src/noise.js')`) for checks such as `streamDist`.
 - If the browser pane is hidden, `requestAnimationFrame` slows or stops, so timed checks see stale state. For logic,
   step it by hand instead, e.g. `for (...) hunt.update(1/30, player)`. That's how the scent trail was verified.
-- Audio can't be listened to in a session: check that `audio.samples` has all four clips and count `playSample` calls.
+- Audio can't be listened to in a session: check that `audio.samples` has every clip and count `playSample` calls.
 
 ## Code map
 
@@ -115,11 +122,17 @@ Owner preferences:
 - Streams (`noise.js`): they follow the 0.5 contour of low-frequency noise, so they meander endlessly and line up
   across chunks; `streamDist` ≈ metres from the centre. Offsets `SOX`/`SOZ` were chosen so no stream crosses the
   barn meadow and the nearest is ~35 m from it. No trees, bushes or big rocks in or right next to the water.
-- Minimap (`hud.js`): heading-up, `MAP_RANGE` 48 m. Streams are painted into a cached world-aligned layer rebuilt
-  every 20 m. Trees from `forest.nearbyColliders`.
+- Minimap (`hud.js`): heading-up, `MAP_RANGE` 70 m (raised from 48 so a wolf shows on the map before it can be seen
+  in the haze). Streams are painted into a cached world-aligned layer rebuilt
+  every 20 m. Trees from `forest.nearbyColliders`. Map size `clamp(140px, 44vmin, 200px)` (enlarged for the wolf, at
+  the owner's request). The stream layer covers 205 m.
 - Truffle hunt (`truffles.js`): constants at the top (`SCENT_RANGE`, `WISP_RANGE`, `NEAR`, `DIG_DIST`, `DIG_TIME`).
   `excite` 0..1 (closeness to the nearest truffle, ^1.6, smoothed) drives the pig's body language, sound choice and
   frequency, and cloud frequency/strength.
+- Wolf (`wolf.js`): states `none` → `walk` → `alert` → `windup` → `run` → `leap` → `done`. While attacking, `main.js`
+  ignores input, turns the pig to face the wolf, pulls the camera back (`camPull`), skips the truffle hunt, knocks
+  the pig onto its side at the pounce (`knock`), then `showGameOver()` freezes the world (`gameOver` is part of
+  `halted()`). New game resets the wolf, hunt, counter, collected truffles and puts the pig back at the barn.
 
 ## Design decisions already made (don't reverse without asking)
 
@@ -141,8 +154,8 @@ Controls
 
 Screens and buttons
 - Pause button in the **top-right corner** (right of the truffle counter); Escape or P on a keyboard. Pause menu:
-  a pink "Game paused" banner, Resume, and "Sound: on/off" (the only mute control; remembered on the device in
-  `localStorage` `tp-muted`). Paused = everything frozen: movement, wind sway, water, mist, sound (the audio clock is
+  a pink "Game paused" banner, Resume, "Sound: on/off" (the only mute control; remembered on the device in
+  `localStorage` `tp-muted`), and a green WhatsApp Share button. Paused = everything frozen: movement, wind sway, water, mist, sound (the audio clock is
   suspended). Switching apps or locking the phone pauses the game.
 - Phones (`pointer: coarse`) held upright get a full "Turn your phone sideways" screen (tilting phone icon) and the
   game freezes until it's sideways. Desktop browsers are never blocked.
@@ -156,8 +169,13 @@ HUD
   in range; when out of range the barn sits **on the rim line itself** pointing home, with the distance ("94 m")
   just inside next to it. No distance label when the barn is in range.
 - Top right: truffle counter (truffle icon + number, bounces on change), then the pause button.
-- Bottom right (once the game starts): green WhatsApp share button. Opens `wa.me` with "I found N truffles in the
-  forest in TrufflePig 🐷 / How many can you find? <game link>" (`shareText` in `main.js`).
+- No share button during play (**moved into the pause menu and the game-over screen at the owner's request**). It
+  opens `wa.me` with "I found N truffles in the forest in TrufflePig 🐷 / How many can you find? <game link>"; from
+  the game-over screen "I found N truffles in TrufflePig 🐷 before a wolf got me 🐺 / ..." (`shareText` in `main.js`).
+- Game over: dark reddish wash, grey "Game over" banner, "The wolf got you!", "You found N truffles", Share and
+  New game. The pause button is hidden and Escape/P do nothing while it's up.
+- Wolf on the minimap: grey wolf head with yellow eyes, only while it's inside the map; a pulsing red glow behind it
+  once it's staring or attacking.
 - Speech bubble over the pig: only "squee!" / "squee! squee!" when very close to a truffle. The "sniff sniff"
   bubble on the nose raise was **removed at the owner's request**.
 
@@ -196,8 +214,20 @@ Birds
   over 60 m away are removed. When the pig gets close the whole flock takes off away from it with one wing-flap
   sound (panned and quieter with distance) and is removed after 4 s of flight.
 
+Wolf (the owner's design)
+- Only one wolf at a time. The first comes after `FIRST_DELAY` 35 s of play, later ones 25-50 s after the last one
+  left. It appears 86-96 m away (lost in the haze; its eyes are fogged too), ahead and off to one side, and walks slowly (1.1 m/s) **mostly perpendicular to the
+  pig's heading** (a gentle wobble), so it crosses in front of the pig. It keeps 40 m from the barn and leaves for
+  good beyond 125 m.
+- Coming into minimap range (70 m): it appears on the map and the **"howling wolves"** recording plays (once per
+  wolf, at most every 30 s).
+- Pig within 26 m: it stops, turns to stare at the pig, crouches, snarls (jaw open, fangs, ears back, hackles up) and
+  **growls** ("scary wolf" recording, louder the closer). If the pig backs off past 36 m it slinks away. (Stare/attack distances were
+  raised from 16/7 m at the owner's request.)
+- Pig within 12 m: a short crouch, a loud snarl, then it charges (10 m/s), leaps over the pig and lands behind it; red
+  flash, frightened squeal, the pig is bowled over, and ~1.4 s later the game-over screen.
+
 ## Ideas discussed but not built
-- Enemies (the owner's next step after truffles).
 - Returning to the barn with the truffles as a goal (the reason for the barn and minimap).
 - An in-game update check like RatSniper's.
 - More Pixabay pig sounds (the owner may pick more from https://pixabay.com/sound-effects/search/pig/).

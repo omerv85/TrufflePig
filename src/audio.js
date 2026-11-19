@@ -349,6 +349,8 @@ export class Ambience {
       excited: ['assets/sounds/pig-grunting-excitedly.mp3', 0.75],
       wings: ['assets/sounds/bird-wings.mp3', 1.0],
       creek: ['assets/sounds/creek.mp3', 3.3],  // quiet recording: matches the old synth brook's loudness
+      howl: ['assets/sounds/wolf-howl.mp3', 0.45],   // loud recording; it should sound distant
+      growl: ['assets/sounds/wolf-growl.mp3', 1.3],
     };
     this.samples = {};
     await Promise.all(Object.entries(files).map(async ([name, [url, gain]]) => {
@@ -384,7 +386,42 @@ export class Ambience {
     p.pan.value = pan;
     src.connect(g).connect(p).connect(this.master);
     src.start(t, offset, duration);
-    return true;
+    return { src, g };
+  }
+
+  // Fade out and stop a sound started with playSample.
+  stopSample(h, fade = 0.3) {
+    if (!h || !this.ctx) return;
+    const t = this.ctx.currentTime;
+    try {
+      h.g.gain.cancelScheduledValues(t);
+      h.g.gain.setValueAtTime(h.g.gain.value, t);
+      h.g.gain.linearRampToValueAtTime(0, t + fade);
+      h.src.stop(t + fade + 0.02);
+    } catch {}
+  }
+
+  // ---------- wolf ----------
+  // Distant howling as a wolf comes into minimap range.
+  howl({ vol = 1, pan = 0 } = {}) {
+    if (!this.ctx) return null;
+    return this.playSample('howl', { vol, pan: pan * 0.6 });
+  }
+
+  // A slice of the growl recording (the wolf stares and growls while the pig is close).
+  growl({ vol = 1, pan = 0, duration = 3 } = {}) {
+    const s = this.samples?.growl;
+    if (!s) return null;
+    const offset = rand(0, Math.max(0, s.buffer.duration - duration - 0.1));
+    return this.playSample('growl', { vol, pan, offset, duration, fade: 0.25, rate: rand(0.95, 1.03) });
+  }
+
+  // The loud snarl as it charges.
+  snarl({ pan = 0 } = {}) {
+    const s = this.samples?.growl;
+    if (!s) return null;
+    const offset = rand(0, Math.max(0, s.buffer.duration - 2.6));
+    return this.playSample('growl', { vol: 1.5, pan, offset, duration: 2.5, fade: 0.05, rate: 1.12 });
   }
 
   // A startled flock bursting up into the air.

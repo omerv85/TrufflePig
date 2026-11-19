@@ -31,9 +31,12 @@ Deployed as a Cloudflare Worker serving static files (`wrangler.jsonc`). The Wor
 - `src/barn.js` – the barn at the starting point
 - `src/truffles.js` – hidden truffles: yellow scent mist, the pig's excitement and squeals, digging and the reward
 - `src/birds.js` – flocks of songbirds pecking on the forest floor that fly off when the pig gets close
+- `src/wolf.js` – the prowling wolf: shows on the minimap with a howl, growls when you get close, and ends the
+  game if you get too close
 - `src/audio.js` – synthesized ambience (breeze, leaves, insects, birds, brook), plus the pig's recorded calls
 - `assets/sounds/` – pig recordings from Pixabay, used under the Pixabay Content License:
   freesound_community "pig grunt" (100272) and "pig oink" (47167), magiaz "porco" (326303),
   cartoon_music "pig grunting excitedly" (537017), DRAGON-STUDIO "bird wings" (463212), and
-  freesound_community "small creek" (70653)
+  freesound_community "small creek" (70653), plus wolf sounds DRAGON-STUDIO "howling wolves" (515977) and
+  alice_soundz "scary wolf growling" (224086)
 - `src/noise.js` – seeded noise, terrain height, and the stream network (streams follow a noise contour, so they meander endlessly and line up across chunks)

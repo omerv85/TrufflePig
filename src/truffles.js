@@ -157,6 +157,20 @@ export class TruffleHunt {
     this.nextHole = 0;
   }
 
+  // New game: stop any dig, clear the dug patches and calm the pig down.
+  reset() {
+    this.target = null;
+    this.digT = -1;
+    this.excite = 0;
+    this.smell = 0;
+    this.hadScent = false;
+    this.squealT = 1.5;
+    this.prizeT = -1;
+    this.prize.visible = false;
+    for (const h of this.holes) h.visible = false;
+    for (const p of this.fx.p) p.alive = false;
+  }
+
   get digging() { return this.digT >= 0; }
   get digAmount() { return this.digging ? Math.min(1, this.digT / 0.25, (DIG_TIME + 0.2 - this.digT) / 0.3) : 0; }
 
