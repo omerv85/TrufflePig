@@ -233,6 +233,7 @@ document.getElementById('play').addEventListener('click', () => {
   nextSnort = 3 + Math.random() * 3;
   document.getElementById('start').classList.add('hide');
   pauseBtn.classList.remove('hidden');
+  shareBtn.classList.remove('hidden');
   applyHalt();
 });
 
@@ -315,6 +316,22 @@ showFsButton();
 
 fsBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
 fsBtn.addEventListener('click', enterFullscreen);
+// ---------- WhatsApp share ----------
+// Bottom-right button: opens WhatsApp (the app on phones, WhatsApp Web on desktop) with a message
+// saying how many truffles were found and inviting the friend to beat it.
+const GAME_URL = 'https://trufflepig.o-vertman.workers.dev/';
+const shareBtn = document.getElementById('share-btn');
+function shareText(n) {
+  const found = n === 0 ? "I'm hunting for truffles in the forest in TrufflePig 🐷"
+    : `I found ${n} truffle${n === 1 ? '' : 's'} in the forest in TrufflePig 🐷`;
+  return `${found}
+How many can you find? ${GAME_URL}`;
+}
+shareBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+shareBtn.addEventListener('click', () => {
+  window.open('https://wa.me/?text=' + encodeURIComponent(shareText(hud.truffles)), '_blank', 'noopener');
+});
+
 function isTouch() { return isPhone || 'ontouchstart' in window; }
 
 const sniffEl = document.getElementById('sniff');

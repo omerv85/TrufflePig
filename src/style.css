@@ -170,6 +170,26 @@ html, body {
 #fs-btn svg { width: 24px; height: 24px; fill: none; stroke: #fff; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
 #fs-btn.hidden { display: none; }
 
+#share-btn {
+  position: fixed;
+  right: max(16px, env(safe-area-inset-right));
+  bottom: calc(env(safe-area-inset-bottom) + 14px);
+  width: 50px;
+  height: 50px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.9);
+  background: #25d366;
+  box-shadow: 0 4px 14px rgba(150, 100, 80, 0.3);
+  cursor: pointer;
+  transition: opacity 0.3s, transform 0.15s;
+}
+#share-btn:active { transform: scale(0.92); }
+#share-btn svg { width: 28px; height: 28px; fill: #fff; }
+#share-btn.hidden { opacity: 0; pointer-events: none; }
+
 /* ---------- overlays: pause menu, rotate screen ---------- */
 .overlay {
   position: fixed;

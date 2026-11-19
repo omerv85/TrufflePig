@@ -156,6 +156,8 @@ HUD
   in range; when out of range the barn sits **on the rim line itself** pointing home, with the distance ("94 m")
   just inside next to it. No distance label when the barn is in range.
 - Top right: truffle counter (truffle icon + number, bounces on change), then the pause button.
+- Bottom right (once the game starts): green WhatsApp share button. Opens `wa.me` with "I found N truffles in the
+  forest in TrufflePig 🐷 / How many can you find? <game link>" (`shareText` in `main.js`).
 - Speech bubble over the pig: only "squee!" / "squee! squee!" when very close to a truffle. The "sniff sniff"
   bubble on the nose raise was **removed at the owner's request**.
 
