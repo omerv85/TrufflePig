@@ -132,11 +132,34 @@ function forestDensity(x, z) {
 }
 
 // ---------- props ----------
+// Leaves never hang lower than this above the ground under them, so the pig (1.44 m to the
+// ear tips) can walk beneath any canopy without its head poking into the leaves.
+const LEAF_CLEAR = 2.0;
+
+// How far a canopy whose lowest leaves sit at `bottom` must be raised to clear the highest
+// ground within `spread` metres of the trunk (on a slope, the uphill side is the tight one).
+function canopyLift(wx, wz, bottom, spread) {
+  let top = terrainHeight(wx, wz);
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2;
+    top = Math.max(top, terrainHeight(wx + Math.cos(a) * spread, wz + Math.sin(a) * spread));
+  }
+  return Math.max(0, top + LEAF_CLEAR - bottom);
+}
+
 function roundTree(b, x, y, z, rng, colliders, wx, wz) {
-  const h = 2.2 + rng() * 1.8;
+  let h = 2.2 + rng() * 1.8;
   const s = 0.9 + rng() * 0.5;
+  const t0 = b.pos.length;
   b.add(T.trunk, mat(x, y - 0.2, z, s, h + 1.2, s, rng() * 6), PAL.trunk, rng, 0, 0.12, 0.05);
   const R = 1.6 + rng() * 1.0;
+  // Raise a low canopy, stretching the trunk to match (keeps the random sequence, and so the forest, unchanged).
+  const lift = canopyLift(wx, wz, y + h - 0.31 * R, R);
+  if (lift > 0) {
+    const k = (h + lift + 1.2) / (h + 1.2);
+    for (let i = t0 + 1; i < b.pos.length; i += 3) b.pos[i] = y - 0.2 + (b.pos[i] - (y - 0.2)) * k;
+    h += lift;
+  }
   const col = pick(PAL.canopy, rng);
   const cy = y + h + R * 0.55;
   b.add(T.blob, mat(x, cy, z, R, R * 0.85, R, rng() * 6), col, rng, 0.15, 0.4);
@@ -151,17 +174,19 @@ function roundTree(b, x, y, z, rng, colliders, wx, wz) {
 
 function pineTree(b, x, y, z, rng, colliders, wx, wz) {
   const sc = 0.85 + rng() * 0.5;
-  b.add(T.trunk, mat(x, y - 0.2, z, 0.9 * sc, 1.6 * sc, 0.9 * sc, rng() * 6), PAL.trunk, rng, 0, 0.05, 0.05);
+  const lift = canopyLift(wx, wz, y + sc, 2.1 * sc); // the lowest tier's skirt starts 1 m up
+  b.add(T.trunk, mat(x, y - 0.2, z, 0.9 * sc, 1.6 * sc + lift, 0.9 * sc, rng() * 6), PAL.trunk, rng, 0, 0.05, 0.05);
   const col = pick(PAL.pine, rng);
   const tiers = [[2.1, 2.5, 1.0], [1.65, 2.2, 2.2], [1.1, 1.9, 3.3]];
   for (const [r, h, oy] of tiers) {
-    b.add(T.cone, mat(x, y + oy * sc, z, r * sc, h * sc, r * sc, rng() * 6), col, rng, 0.05, 0.3);
+    b.add(T.cone, mat(x, y + oy * sc + lift, z, r * sc, h * sc, r * sc, rng() * 6), col, rng, 0.05, 0.3);
   }
   colliders.push({ x: wx, z: wz, r: 0.3 * sc });
 }
 
 function birchTree(b, x, y, z, rng, colliders, wx, wz) {
-  const h = 4 + rng() * 1.8;
+  let h = 4 + rng() * 1.8;
+  h += canopyLift(wx, wz, y + h - 1.8, 1.9); // worst case: the biggest leaf ball, low and off-centre
   b.add(T.trunk, mat(x, y - 0.2, z, 0.6, h + 0.4, 0.6, rng() * 6), PAL.birch, rng, 0, 0.15, 0.04);
   const col = pick(PAL.birchLeaf, rng);
   for (let i = 0; i < 3; i++) {

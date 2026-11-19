@@ -128,6 +128,9 @@ World and look
   flat cloud layer, fading into the haze near the horizon, drifting very slowly with game time.
 - The barn (pastel red, cream roof, white X doors) stands just behind the spawn point, doors facing it, in a tree-free
   meadow (`inClearing`).
+- Tree leaves never hang lower than `LEAF_CLEAR` 2 m above the highest ground under the canopy (the pig is 1.44 m
+  to the ear tips), at the owner's request: low canopies are raised and their trunks stretched (`canopyLift`), without
+  changing the random sequence, so the forest layout stays the same.
 - The pig: smooth pink skin. A shell-fur "fuzz" was tried and **removed at the owner's request** (looked weird).
 
 Controls
