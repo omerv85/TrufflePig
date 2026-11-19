@@ -135,13 +135,17 @@ export class Ambience {
     this.lfo(0.083, 0.12, g.gain);
   }
 
-  // Babbling water: a few resonant bands whose pitches jump around like bubbles.
+  // Babbling brook: the "small creek" recording looped (startCreek); until it loads, or if it
+  // fails, a synthesized babble: a few resonant bands whose pitches jump around like bubbles.
   brook() {
     const ctx = this.ctx;
     this.brookGain = ctx.createGain();
     this.brookGain.gain.value = 0;
     this.brookGain.connect(this.master);
+    this.brookSynth = ctx.createGain();
+    this.brookSynth.connect(this.brookGain);
     const src = this.loop(this.pink);
+    this.brookSrc = src;
     const bands = [];
     for (let i = 0; i < 4; i++) {
       const bp = ctx.createBiquadFilter();
@@ -150,7 +154,7 @@ export class Ambience {
       bp.frequency.value = 600 + i * 400;
       const g = ctx.createGain();
       g.gain.value = 0.9;
-      src.connect(bp).connect(g).connect(this.brookGain);
+      src.connect(bp).connect(g).connect(this.brookSynth);
       bands.push(bp);
     }
     const hiss = ctx.createBiquadFilter();
@@ -158,19 +162,45 @@ export class Ambience {
     hiss.frequency.value = 2500;
     const hg = ctx.createGain();
     hg.gain.value = 0.25;
-    src.connect(hiss).connect(hg).connect(this.brookGain);
-    setInterval(() => {
+    src.connect(hiss).connect(hg).connect(this.brookSynth);
+    this.brookTimer = setInterval(() => {
       if (ctx.state !== 'running' || this.brookLevel < 0.01) return;
       const t = ctx.currentTime;
       for (const bp of bands) bp.frequency.setTargetAtTime(rand(450, 2200), t, 0.03);
     }, 70);
     this.brookLevel = 0;
+    this.brookMax = 0.35;
+  }
+
+  // Swap the synthesized babble for the recording, looped without a seam: the last XF seconds
+  // are crossfaded into the start, so the loop end flows straight back into the beginning.
+  startCreek() {
+    const s = this.samples.creek;
+    if (!s) return;
+    const ctx = this.ctx, src = s.buffer, XF = 1.5;
+    const xf = Math.floor(XF * src.sampleRate), len = src.length - xf;
+    const buf = ctx.createBuffer(src.numberOfChannels, len, src.sampleRate);
+    for (let ch = 0; ch < src.numberOfChannels; ch++) {
+      const a = src.getChannelData(ch), d = buf.getChannelData(ch);
+      d.set(a.subarray(0, len));
+      for (let i = 0; i < xf; i++) {
+        const k = i / xf;  // equal-power crossfade: tail fades out over the head fading in
+        d[i] = a[i] * Math.sin(k * Math.PI / 2) + a[len + i] * Math.cos(k * Math.PI / 2);
+      }
+    }
+    const g = ctx.createGain();
+    g.gain.value = s.gain;
+    this.loop(buf).connect(g).connect(this.brookGain);
+    clearInterval(this.brookTimer);
+    this.brookSrc.stop();
+    this.brookSynth.disconnect();
+    this.brookMax = 1;
   }
 
   setWater(level) {
     if (!this.ctx || Math.abs(level - this.brookLevel) < 0.01) return;
     this.brookLevel = level;
-    this.brookGain.gain.setTargetAtTime(level * 0.35, this.ctx.currentTime, 0.3);
+    this.brookGain.gain.setTargetAtTime(level * this.brookMax, this.ctx.currentTime, 0.3);
   }
 
   leaves() {
@@ -318,6 +348,7 @@ export class Ambience {
       porco: ['assets/sounds/pig-porco.mp3', 1.7],
       excited: ['assets/sounds/pig-grunting-excitedly.mp3', 0.75],
       wings: ['assets/sounds/bird-wings.mp3', 1.0],
+      creek: ['assets/sounds/creek.mp3', 3.3],  // quiet recording: matches the old synth brook's loudness
     };
     this.samples = {};
     await Promise.all(Object.entries(files).map(async ([name, [url, gain]]) => {
@@ -329,6 +360,7 @@ export class Ambience {
         console.warn('Could not load', url, e);
       }
     }));
+    this.startCreek();
   }
 
   // fade (seconds) softens the edges when playing a slice out of a longer recording.

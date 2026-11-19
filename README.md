@@ -34,5 +34,6 @@ Deployed as a Cloudflare Worker serving static files (`wrangler.jsonc`). The Wor
 - `src/audio.js` – synthesized ambience (breeze, leaves, insects, birds, brook), plus the pig's recorded calls
 - `assets/sounds/` – pig recordings from Pixabay, used under the Pixabay Content License:
   freesound_community "pig grunt" (100272) and "pig oink" (47167), magiaz "porco" (326303),
-  cartoon_music "pig grunting excitedly" (537017), and DRAGON-STUDIO "bird wings" (463212)
+  cartoon_music "pig grunting excitedly" (537017), DRAGON-STUDIO "bird wings" (463212), and
+  freesound_community "small creek" (70653)
 - `src/noise.js` – seeded noise, terrain height, and the stream network (streams follow a noise contour, so they meander endlessly and line up across chunks)

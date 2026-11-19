@@ -51,7 +51,9 @@ voice is recorded.
   footsteps, digging, chime; recorded pig calls (`loadSamples`, `playSample`).
 - `assets/sounds/*.mp3`: pig recordings from Pixabay (Pixabay Content License; credits in `README.md`):
   `pig-grunt.mp3`, `pig-oink.mp3`, `pig-porco.mp3`, `pig-grunting-excitedly.mp3`, plus `bird-wings.mp3` (flock taking off;
-  played from 1.3 s because the file starts near-silent).
+  played from 1.3 s because the file starts near-silent), and `creek.mp3` (freesound_community "small creek", the
+  brook near streams: a 19.8 s loop with its ends crossfaded in `startCreek`; the old synthesized babble is only a
+  fallback if it fails to load).
 - `share.jpg` (1200×630): the link-preview picture WhatsApp and others show (`og:image` in `index.html`). A real
   frame of the game (sunlit pig behind a tree with truffle mist, feather clouds) with "TrufflePig" and "Follow your nose
   to the truffles" drawn on top in Caveat. Made by rendering the scene at 1200×630 in the browser from a staged spot
