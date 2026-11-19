@@ -20,8 +20,8 @@ hidden in the ground beside tree trunks, digs them up, and can find its way back
 using the minimap. **Phones play in landscape** (an upright phone gets a "Turn your phone sideways" screen); test at
 812×375. Desktop works with mouse or keyboard.
 
-Danger: a **wolf** prowls the forest (one at a time). Getting too close to it ends the game (game-over screen with
-Share and New game).
+Danger: a **wolf** and a **bear** prowl the forest. Getting too close to either ends the game (game-over screen with
+Share and New game). Docile animals (deer, goat, squirrel, moose) wander too: they stare, then flee.
 
 ## Files
 
@@ -48,9 +48,11 @@ voice is recorded.
   the reward.
 - `src/birds.js`: songbirds on the forest floor (`Birds`): little flocks that hop and peck, and burst up and fly
   away when the pig comes close (`SCARE` 4.5 m + 1 m per m/s of pig speed), with the wing-flap recording.
-- `src/wolf.js`: the wolf (`Wolves`): low-poly grey model with yellow eyes, a broad chest, thick mane and big shaggy
-  cheek ruffs with pointed tufts (enlarged at the owner's request), the prowl/stare/attack state
-  machine, howl and growl sounds. Tuning constants at the top.
+- `src/animals.js`: all forest animals on one algorithm (`Animals` manager, `Creature`): the `SPECIES` table (sizes,
+  speeds, stare/attack/calm distances, spawn distances, sounds), spawn `SLOTS`, walk/stare/attack/flee states, growls.
+- `src/creatures.js`: the animal models from primitives (`createCreature(kind, size)`): wolf (grey, yellow eyes, broad
+  chest, mane, shaggy cheek ruffs), bear (brown, shoulder hump, heavy cheeks), deer (antlers, white tail), goat (white,
+  horns, beard), squirrel (bushy tail), moose (palmate antlers, dewlap).
 - `src/audio.js`: `Ambience`: synthesized breeze, leaf gusts, insect drone, cicadas, birds, brook, splashes,
   footsteps, digging, chime; recorded pig calls (`loadSamples`, `playSample`).
 - `assets/sounds/*.mp3`: pig recordings from Pixabay (Pixabay Content License; credits in `README.md`):
@@ -59,7 +61,10 @@ voice is recorded.
   brook near streams: a 19.8 s loop with its ends crossfaded in `startCreek`; the old synthesized babble is only a
   fallback if it fails to load). Wolf sounds: `wolf-howl.mp3` (DRAGON-STUDIO "howling wolves", 7.6 s, played once when
   a wolf comes into minimap range) and `wolf-growl.mp3` (alice_soundz "scary wolf growling", 36 s; random 2.6-3.6 s
-  slices chained while the wolf stares, and a louder sped-up slice as the snarl when it charges).
+  slices chained while the wolf stares, and a louder sped-up slice as the snarl when it charges). Bear sounds:
+  `bear-growl.mp3` (universfield "bear growl", 1.3 s, played once when a bear comes into minimap range) and
+  `bear-growling.mp3` (gargamel10 "growling bear", 6.1 s, sound only in the first 5 s; slices while it stares and as
+  it charges). The docile animals are silent (no recordings yet).
 - `share.jpg` (1200×630): the link-preview picture WhatsApp and others show (`og:image` in `index.html`). A real
   frame of the game (sunlit pig behind a tree with truffle mist, feather clouds) with "TrufflePig" and "Follow your nose
   to the truffles" drawn on top in Caveat. Made by rendering the scene at 1200×630 in the browser from a staged spot
@@ -98,10 +103,11 @@ Owner preferences:
 - Open it at phone size in landscape (812×375), tap "Tap to start" (it also unlocks audio). The browser pane's
   "mobile" preset is portrait and emulates touch, so it shows the rotate screen; a custom 812×375 size doesn't count
   as a phone. The pane also blocks full screen, so that can only be checked on a real phone. From the console:
-  `window.__game = { player, forest, camera, renderer, scene, audio, hud, hunt, birds, wolves, setPaused, sky, snortNow }`, e.g. teleport with `player.pos.set(...)`,
+  `window.__game = { player, forest, camera, renderer, scene, audio, hud, hunt, birds, animals, setPaused, sky, snortNow }`, e.g. teleport with `player.pos.set(...)`,
   turn with `player.heading`, find truffles with `[...forest.nearbyTruffles(x, z, range)]`, set the counter with
-  `hud.setTruffles(n)`, trigger a nose raise with `snortNow()`, bring a wolf now with `wolves.timer = 0` (then
-  move it with `wolves.pos.set(...)`; a wolf within 26 m stares, within 12 m attacks). Modules can be imported directly
+  `hud.setTruffles(n)`, trigger a nose raise with `snortNow()`, put an animal anywhere with
+  `animals.spawnAt('bear', x, z, player)` (any kind; replaces the one in its slot). A wolf/bear within 26 m stares,
+  within 12 m attacks. The game must be started for animals to move. Modules can be imported directly
   (`await import('/src/noise.js')`) for checks such as `streamDist`.
 - If the browser pane is hidden, `requestAnimationFrame` slows or stops, so timed checks see stale state. For logic,
   step it by hand instead, e.g. `for (...) hunt.update(1/30, player)`. That's how the scent trail was verified.
@@ -122,17 +128,18 @@ Owner preferences:
 - Streams (`noise.js`): they follow the 0.5 contour of low-frequency noise, so they meander endlessly and line up
   across chunks; `streamDist` ≈ metres from the centre. Offsets `SOX`/`SOZ` were chosen so no stream crosses the
   barn meadow and the nearest is ~35 m from it. No trees, bushes or big rocks in or right next to the water.
-- Minimap (`hud.js`): heading-up, `MAP_RANGE` 70 m (raised from 48 so a wolf shows on the map before it can be seen
+- Minimap (`hud.js`): heading-up, `MAP_RANGE` 70 m (raised from 48 so a wolf or bear shows on the map before it can be seen
   in the haze). Streams are painted into a cached world-aligned layer rebuilt
   every 20 m. Trees from `forest.nearbyColliders`. Map size `clamp(140px, 44vmin, 200px)` (enlarged for the wolf, at
   the owner's request). The stream layer covers 205 m.
 - Truffle hunt (`truffles.js`): constants at the top (`SCENT_RANGE`, `WISP_RANGE`, `NEAR`, `DIG_DIST`, `DIG_TIME`).
   `excite` 0..1 (closeness to the nearest truffle, ^1.6, smoothed) drives the pig's body language, sound choice and
   frequency, and cloud frequency/strength.
-- Wolf (`wolf.js`): states `none` → `walk` → `alert` → `windup` → `run` → `leap` → `done`. While attacking, `main.js`
-  ignores input, turns the pig to face the wolf, pulls the camera back (`camPull`), skips the truffle hunt, knocks
+- Animals (`animals.js`): states `walk` → `alert` → `windup` → `run` → `leap` → `done` (wolf, bear) or `walk` → `alert`
+  → `flee` (docile). `animals.attacker` is the one attacking (only one at a time; another predator keeps staring).
+  While attacking, `main.js` ignores input, turns the pig to face it, pulls the camera back (`camPull`), skips the truffle hunt, knocks
   the pig onto its side at the pounce (`knock`), then `showGameOver()` freezes the world (`gameOver` is part of
-  `halted()`). New game resets the wolf, hunt, counter, collected truffles and puts the pig back at the barn.
+  `halted()`). New game removes all animals and resets the hunt, counter, collected truffles and puts the pig back at the barn.
 
 ## Design decisions already made (don't reverse without asking)
 
@@ -171,10 +178,11 @@ HUD
 - Top right: truffle counter (truffle icon + number, bounces on change), then the pause button.
 - No share button during play (**moved into the pause menu and the game-over screen at the owner's request**). It
   opens `wa.me` with "I found N truffles in the forest in TrufflePig 🐷 / How many can you find? <game link>"; from
-  the game-over screen "I found N truffles in TrufflePig 🐷 before a wolf got me 🐺 / ..." (`shareText` in `main.js`).
-- Game over: dark reddish wash, grey "Game over" banner, "The wolf got you!", "You found N truffles", Share and
+  the game-over screen "I found N truffles in TrufflePig 🐷 before a wolf got me 🐺 / ..." or "... before a bear got me
+  🐻" (with 0 truffles: "A bear got me in the forest ..."; `shareText` in `main.js`).
+- Game over: dark reddish wash, grey "Game over" banner, "The wolf got you!" / "The bear got you!", "You found N truffles", Share and
   New game. The pause button is hidden and Escape/P do nothing while it's up.
-- Wolf on the minimap: grey wolf head with yellow eyes, only while it's inside the map; a pulsing red glow behind it
+- Wolf and bear on the minimap: grey wolf head with yellow eyes / brown bear head with round ears, only while it's inside the map; a pulsing red glow behind it
   once it's staring or attacking.
 - Speech bubble over the pig: only "squee!" / "squee! squee!" when very close to a truffle. The "sniff sniff"
   bubble on the nose raise was **removed at the owner's request**.
@@ -214,8 +222,18 @@ Birds
   over 60 m away are removed. When the pig gets close the whole flock takes off away from it with one wing-flap
   sound (panned and quieter with distance) and is removed after 4 s of flight.
 
-Wolf (the owner's design)
-- Only one wolf at a time. The first comes after `FIRST_DELAY` 35 s of play, later ones 25-50 s after the last one
+Animals (the owner's design)
+- All animals use the same algorithm. At most one wolf, one bear and one docile animal (deer, goat, squirrel or moose,
+  picked at random) at a time; a wolf and a bear can be around together. They keep apart: a new animal never appears
+  within `MIN_SEP` 45 m of another, and walking animals steer away from each other inside `KEEP_APART` 35 m.
+- Bear: same as the wolf, bigger and brown, first after 75 s (then 35-70 s after the last left). **"bear growl"** when it
+  comes into map range, **"growling bear"** while it stares and as it charges. Bear head on the map. "The bear got
+  you!" and "a bear got me 🐻" in the share text.
+- Docile animals: first after 12 s (then 8-20 s after the last one left), appear 75-90 m away (squirrel 55-70 m),
+  walk across the pig's path like the wolf, stop and stare (head up, ears twitching; the squirrel sits up) when the
+  pig comes close, and flee when it gets too close (deer 24/12 m, moose 24/12, goat 16/8, squirrel 10/5); the deer
+  raises its white tail as it bolts. They vanish once 85 m away. Harmless, silent, and not on the minimap.
+- Wolf: only one at a time. The first comes after `FIRST_DELAY` 35 s of play, later ones 25-50 s after the last one
   left. It appears 86-96 m away (lost in the haze; its eyes are fogged too), ahead and off to one side, and walks slowly (1.1 m/s) **mostly perpendicular to the
   pig's heading** (a gentle wobble), so it crosses in front of the pig. It keeps 40 m from the barn and leaves for
   good beyond 125 m.

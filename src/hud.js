@@ -59,8 +59,8 @@ export class Hud {
   }
 
   // Draws the map rotated so the pig always faces up.
-  // wolf: { x, z, angry } or null.
-  drawMap(player, barn, forest, wolf) {
+  // icons: dangerous animals, [{ x, z, kind: 'wolf' | 'bear', angry }].
+  drawMap(player, barn, forest, icons = []) {
     // Padding around the map circle leaves room for the barn icon sitting on the rim.
     const PAD = 11;
     const g = this.ctx, S = this.size, c = S / 2, R = c - PAD;
@@ -154,16 +154,16 @@ export class Hud {
 
     drawBarn(g, bx, by, onRim ? 0.9 : 1);
 
-    // the wolf, only once it's inside the map
-    if (wolf) {
-      let [wx, wy] = toMap(wolf.x, wolf.z);
+    // wolves and bears, only once they're inside the map
+    for (const a of icons) {
+      let [wx, wy] = toMap(a.x, a.z);
       const wd = Math.hypot(wx - c, wy - c);
       if (wd < R - 4) {
         // near the edge, keep the whole head inside the circle
         const maxD = R - 13;
         if (wd > maxD) { wx = c + ((wx - c) / wd) * maxD; wy = c + ((wy - c) / wd) * maxD; }
-        const pulse = wolf.angry ? 1 + 0.15 * Math.sin(performance.now() / 90) : 1;
-        drawWolf(g, wx, wy, pulse, wolf.angry);
+        const pulse = a.angry ? 1 + 0.15 * Math.sin(performance.now() / 90) : 1;
+        (a.kind === 'bear' ? drawBear : drawWolf)(g, wx, wy, pulse, a.angry);
       }
     }
 
@@ -262,6 +262,58 @@ function drawWolf(g, x, y, k, angry) {
   for (const s of [-1, 1]) {
     g.beginPath();
     g.ellipse(s * 4, -1.5, 1.8, 1.1, s * 0.4, 0, Math.PI * 2);
+    g.fill();
+  }
+  g.restore();
+}
+
+// Brown bear head: round ears, broad face, pale muzzle, small dark eyes. Red glow when it's growling.
+function drawBear(g, x, y, k, angry) {
+  g.save();
+  g.translate(x, y);
+  g.scale(k, k);
+  if (angry) {
+    g.fillStyle = 'rgba(230, 70, 80, 0.35)';
+    g.beginPath();
+    g.arc(0, 0, 13, 0, Math.PI * 2);
+    g.fill();
+  }
+  g.shadowColor = 'rgba(40, 30, 50, 0.45)';
+  g.shadowBlur = 4;
+  g.strokeStyle = '#fffaf2';
+  g.lineWidth = 1.6;
+  g.fillStyle = '#7b5a46';
+  // ears behind the face
+  for (const s of [-1, 1]) {
+    g.beginPath();
+    g.arc(s * 6.5, -6.5, 3.6, 0, Math.PI * 2);
+    g.fill();
+    g.stroke();
+  }
+  g.beginPath();
+  g.ellipse(0, 0.5, 9, 8.2, 0, 0, Math.PI * 2);
+  g.fill();
+  g.shadowBlur = 0;
+  g.stroke();
+  // inner ears
+  g.fillStyle = '#c9a687';
+  for (const s of [-1, 1]) {
+    g.beginPath();
+    g.arc(s * 6.5, -6.5, 1.6, 0, Math.PI * 2);
+    g.fill();
+  }
+  // muzzle and nose
+  g.beginPath();
+  g.ellipse(0, 3.6, 4.3, 3.4, 0, 0, Math.PI * 2);
+  g.fill();
+  g.fillStyle = '#2a2630';
+  g.beginPath();
+  g.ellipse(0, 2.4, 2, 1.4, 0, 0, Math.PI * 2);
+  g.fill();
+  // small dark eyes
+  for (const s of [-1, 1]) {
+    g.beginPath();
+    g.arc(s * 3.6, -1.6, 1.25, 0, Math.PI * 2);
     g.fill();
   }
   g.restore();

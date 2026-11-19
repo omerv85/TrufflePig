@@ -5,7 +5,7 @@ import { createBarn } from './barn.js';
 import { Hud, MAP_RANGE } from './hud.js';
 import { TruffleHunt } from './truffles.js';
 import { Birds } from './birds.js';
-import { Wolves } from './wolf.js';
+import { Animals } from './animals.js';
 import { createPig } from './pig.js';
 import { Joystick } from './joystick.js';
 import { Ambience } from './audio.js';
@@ -322,18 +322,22 @@ fsBtn.addEventListener('click', enterFullscreen);
 // on desktop) with a message saying how many truffles were found and inviting the friend to beat it.
 const GAME_URL = 'https://trufflepig.o-vertman.workers.dev/';
 const plural = (n) => `${n} truffle${n === 1 ? '' : 's'}`;
-function shareText(n, caught) {
-  const found = caught
-    ? (n === 0 ? 'A wolf got me in the forest in TrufflePig 🐷🐺' : `I found ${plural(n)} in TrufflePig 🐷 before a wolf got me 🐺`)
+const KILLER = { wolf: ['a wolf', '🐺'], bear: ['a bear', '🐻'] };
+// caughtBy: the kind of animal that ended the game ('wolf' / 'bear'), or null from the pause menu.
+function shareText(n, caughtBy) {
+  const k = KILLER[caughtBy];
+  const found = k
+    ? (n === 0 ? `${k[0][0].toUpperCase() + k[0].slice(1)} got me in the forest in TrufflePig 🐷${k[1]}` : `I found ${plural(n)} in TrufflePig 🐷 before ${k[0]} got me ${k[1]}`)
     : (n === 0 ? "I'm hunting for truffles in the forest in TrufflePig 🐷" : `I found ${plural(n)} in the forest in TrufflePig 🐷`);
   return `${found}
 How many can you find? ${GAME_URL}`;
 }
-function share(caught) {
-  window.open('https://wa.me/?text=' + encodeURIComponent(shareText(hud.truffles, caught)), '_blank', 'noopener');
+let caughtBy = null;
+function share(by) {
+  window.open('https://wa.me/?text=' + encodeURIComponent(shareText(hud.truffles, by)), '_blank', 'noopener');
 }
-document.getElementById('pause-share').addEventListener('click', () => share(false));
-document.getElementById('go-share').addEventListener('click', () => share(true));
+document.getElementById('pause-share').addEventListener('click', () => share(null));
+document.getElementById('go-share').addEventListener('click', () => share(caughtBy));
 
 function isTouch() { return isPhone || 'ontouchstart' in window; }
 
@@ -355,13 +359,13 @@ const hunt = new TruffleHunt({
 // ---------- birds on the forest floor ----------
 const birds = new Birds({ scene, forest, audio });
 
-// ---------- the wolf (danger, and the way the game ends) ----------
+// ---------- forest animals: wolf and bear (danger, and the way the game ends), deer, goat, squirrel, moose ----------
 const flashEl = document.getElementById('flash');
 const gameOverEl = document.getElementById('gameover');
-let knock = 0;      // 0..1 the pig bowled over by the wolf
+let knock = 0;      // 0..1 the pig bowled over by a wolf or bear
 let knocked = false;
 let camPull = 0;    // 0..1 camera pulls back to show the attack
-const wolves = new Wolves({
+const animals = new Animals({
   scene, forest, audio, barn: BARN_POS, mapRange: MAP_RANGE,
   onPounce: () => {
     knocked = true;
@@ -370,11 +374,13 @@ const wolves = new Wolves({
     flashEl.classList.add('hit');
     audio.playSample('porco', { offset: 0.1, duration: 0.7, rate: 1.25, vol: 1.1, fade: 0.04 }); // a frightened squeal
   },
-  onGameOver: () => showGameOver(),
+  onGameOver: (kind) => showGameOver(kind),
 });
 
-function showGameOver() {
+function showGameOver(kind) {
   gameOver = true;
+  caughtBy = kind;
+  document.getElementById('go-why').textContent = `The ${kind} got you!`;
   const n = hud.truffles;
   document.getElementById('go-count').textContent = n;
   document.getElementById('go-word').textContent = n === 1 ? 'truffle' : 'truffles';
@@ -385,7 +391,7 @@ function showGameOver() {
 
 // New game: back to the barn with an empty basket; the truffles grow back.
 document.getElementById('new-game').addEventListener('click', () => {
-  wolves.reset();
+  animals.reset();
   hunt.reset();
   forest.collected.clear();
   hud.setTruffles(0);
@@ -458,7 +464,8 @@ cameraTargets(camPos, camLook);
 // ---------- loop ----------
 function update(dt) {
   // Movement from joystick: direction steers, distance from the press point sets speed.
-  const attacked = wolves.attacking;
+  const attacker = animals.attacker;
+  const attacked = !!attacker;
   const inp = started && !attacked ? readInput() : { x: 0, y: 0, mag: 0 };
   let targetSpeed = 0, targetTurn = 0;
   if (inp.mag > 0.08) {
@@ -479,10 +486,10 @@ function update(dt) {
     targetTurn = THREE.MathUtils.clamp(diff * 6, -MAX_TURN, MAX_TURN);
   }
 
-  // The wolf is charging: the pig freezes and turns to face it.
+  // A wolf or bear is charging: the pig freezes and turns to face it.
   if (attacked) {
     targetSpeed = 0;
-    const w = wolves.pos;
+    const w = attacker.pos;
     const want = Math.atan2(-(w.x - player.pos.x), -(w.z - player.pos.z));
     const diff = Math.atan2(Math.sin(want - player.heading), Math.cos(want - player.heading));
     targetTurn = knocked ? 0 : THREE.MathUtils.clamp(diff * 8, -6, 6);
@@ -543,7 +550,7 @@ function update(dt) {
 
   forest.update(player.pos, 2);
   if (started && !attacked) hunt.update(dt, player);
-  if (started) wolves.update(dt, player);
+  if (started) animals.update(dt, player);
   birds.update(dt, player, started);
 }
 
@@ -591,7 +598,7 @@ function frame(now) {
   sun.position.copy(player.pos).addScaledVector(sunDir, 70);
   motes.update(time.value, player.pos);
   updateSniffLabel();
-  hud.drawMap(player, BARN_POS, forest, wolves.visibleOnMap ? { x: wolves.pos.x, z: wolves.pos.z, angry: wolves.state !== 'walk' } : null);
+  hud.drawMap(player, BARN_POS, forest, animals.mapIcons());
 
   renderer.render(scene, camera);
   requestAnimationFrame(frame);
@@ -599,4 +606,4 @@ function frame(now) {
 requestAnimationFrame(frame);
 
 // For debugging in the console.
-window.__game = { player, forest, camera, renderer, scene, audio, hud, hunt, birds, wolves, setPaused, sky, snortNow: () => { nextSnort = 0; } };
+window.__game = { player, forest, camera, renderer, scene, audio, hud, hunt, birds, animals, setPaused, sky, snortNow: () => { nextSnort = 0; } };

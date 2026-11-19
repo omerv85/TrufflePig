@@ -351,6 +351,8 @@ export class Ambience {
       creek: ['assets/sounds/creek.mp3', 3.3],  // quiet recording: matches the old synth brook's loudness
       howl: ['assets/sounds/wolf-howl.mp3', 0.45],   // loud recording; it should sound distant
       growl: ['assets/sounds/wolf-growl.mp3', 1.3],
+      bearGrowl: ['assets/sounds/bear-growl.mp3', 1.8],         // short growl as a bear comes into map range
+      bearGrowling: ['assets/sounds/bear-growling.mp3', 0.6],   // the bear staring and charging
     };
     this.samples = {};
     await Promise.all(Object.entries(files).map(async ([name, [url, gain]]) => {
@@ -401,27 +403,21 @@ export class Ambience {
     } catch {}
   }
 
-  // ---------- wolf ----------
-  // Distant howling as a wolf comes into minimap range.
-  howl({ vol = 1, pan = 0 } = {}) {
+  // ---------- wolf and bear ----------
+  // A whole call, e.g. the distant howl as a wolf comes into minimap range.
+  call(name, { vol = 1, pan = 0 } = {}) {
     if (!this.ctx) return null;
-    return this.playSample('howl', { vol, pan: pan * 0.6 });
+    return this.playSample(name, { vol, pan: pan * 0.6 }) || null;
   }
 
-  // A slice of the growl recording (the wolf stares and growls while the pig is close).
-  growl({ vol = 1, pan = 0, duration = 3 } = {}) {
-    const s = this.samples?.growl;
+  // A random slice of a longer recording (growls while a predator stares, the snarl as it
+  // charges). end: last usable second of the recording.
+  slice(name, { vol = 1, pan = 0, duration = 3, rate, end, fade = 0.25 } = {}) {
+    const s = this.samples?.[name];
     if (!s) return null;
-    const offset = rand(0, Math.max(0, s.buffer.duration - duration - 0.1));
-    return this.playSample('growl', { vol, pan, offset, duration, fade: 0.25, rate: rand(0.95, 1.03) });
-  }
-
-  // The loud snarl as it charges.
-  snarl({ pan = 0 } = {}) {
-    const s = this.samples?.growl;
-    if (!s) return null;
-    const offset = rand(0, Math.max(0, s.buffer.duration - 2.6));
-    return this.playSample('growl', { vol: 1.5, pan, offset, duration: 2.5, fade: 0.05, rate: 1.12 });
+    const last = Math.min(end ?? Infinity, s.buffer.duration) - 0.1;
+    const offset = rand(0, Math.max(0, last - duration));
+    return this.playSample(name, { vol, pan, offset, duration, fade, rate: rate ?? rand(0.95, 1.03) });
   }
 
   // A startled flock bursting up into the air.
