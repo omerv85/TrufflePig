@@ -313,8 +313,16 @@ showFsButton();
 fsBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
 fsBtn.addEventListener('click', enterFullscreen);
 if (isPhone && fsSupported) {
-  // first tap anywhere; if the player later leaves full screen, only the button brings it back
-  addEventListener('pointerdown', () => { if (!isFullscreen()) enterFullscreen(); }, { once: true, capture: true });
+  // first tap anywhere; if the player later leaves full screen, only the button brings it back.
+  // Phones only treat a touch as a user gesture when the finger lifts (pointerup), not on pointerdown.
+  // Keep trying on each tap until full screen has been entered once.
+  const autoFs = () => {
+    if (isFullscreen()) return;
+    enterFullscreen().then(() => {
+      if (isFullscreen()) removeEventListener('pointerup', autoFs, true);
+    });
+  };
+  addEventListener('pointerup', autoFs, true);
 }
 
 const sniffEl = document.getElementById('sniff');
