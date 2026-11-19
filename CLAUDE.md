@@ -17,7 +17,8 @@ A mobile-first 3D forest wander. You are a cute pink pig, seen from just behind 
 third person, see the owner's sketch: head and ears at the bottom of the screen, forest ahead). The pig roams an
 endless, procedurally generated pastel forest on a warm afternoon, follows faint yellow scent mist to truffles
 hidden in the ground beside tree trunks, digs them up, and can find its way back to the barn where it started
-using the minimap. Tested in portrait at phone size (375×812); desktop works with mouse or keyboard.
+using the minimap. **Phones play in landscape** (an upright phone gets a "Turn your phone sideways" screen); test at
+812×375. Desktop works with mouse or keyboard.
 
 Planned next (owner's roadmap): **enemies**. Nothing for them is built yet.
 
@@ -26,10 +27,13 @@ Planned next (owner's roadmap): **enemies**. Nothing for them is built yet.
 No build step and no npm dependencies: plain ES modules, Three.js 0.160.0 from jsDelivr via an import map in
 `index.html`, the Caveat font from Google Fonts. Ambient sound is synthesized with Web Audio; only the pig's
 voice is recorded.
-- `index.html`: canvas, HUD (minimap canvas, truffle counter, mute button), start card, speech bubble, import map.
-- `src/style.css`: all styles (HUD, joystick, start card, bubble).
-- `src/main.js`: entry point. Renderer, lights, sky dome, fog, pollen motes, water ripples, camera, input, the
-  movement loop, the pig's periodic nose raise (`updateSnort`), wading, and wiring of every other module.
+- `index.html`: canvas, HUD (minimap canvas, truffle counter, pause button), full-screen button, start card,
+  pause menu, rotate screen, speech bubble, import map, and the Open Graph tags for link previews.
+- `src/style.css`: all styles (HUD, joystick, buttons, start card, pause menu, rotate screen, bubble).
+- `src/main.js`: entry point. Renderer, lights, sky dome with feather clouds, fog, pollen motes, water ripples,
+  camera, input, pause menu (`setPaused`, `applyHalt`), orientation check (`checkOrientation`), full screen
+  (`enterFullscreen`), the movement loop, the pig's periodic nose raise (`updateSnort`), wading, and wiring of every
+  other module.
 - `src/noise.js`: seeded hashing/noise (`hash2`, `mulberry32`, `fbm`), terrain (`baseHeight`, `terrainHeight`)
   and the stream network (`streamDist`, `waterLevel`, `waterDepth`).
 - `src/forest.js`: the chunked forest (`Forest`, `buildChunk`), tree/bush/rock/grass/flower/reed props, stream water
@@ -45,6 +49,12 @@ voice is recorded.
   footsteps, digging, chime; recorded pig calls (`loadSamples`, `playSample`).
 - `assets/sounds/*.mp3`: pig recordings from Pixabay (Pixabay Content License; credits in `README.md`):
   `pig-grunt.mp3`, `pig-oink.mp3`, `pig-porco.mp3`, `pig-grunting-excitedly.mp3`.
+- `share.jpg` (1200×630): the link-preview picture WhatsApp and others show (`og:image` in `index.html`). A real
+  frame of the game (sunlit pig behind a tree with truffle mist, feather clouds) with "TrufflePig" and "Follow your nose
+  to the truffles" drawn on top in Caveat. Made by rendering the scene at 1200×630 in the browser from a staged spot
+  (the second-nearest truffle to the barn, 6.5 m away, heading offset -0.35), compositing the text on a 2D canvas and
+  saving the JPEG through a temporary local helper. WhatsApp caches previews per link, so a new picture can take a
+  while to show up.
 - `tools/serve.mjs`: local static server (Node, no packages).
 - `wrangler.jsonc`, `.assetsignore`: Cloudflare hosting (see above). `.claude/launch.json`: preview config.
 
@@ -72,8 +82,10 @@ Owner preferences:
 - `node tools/serve.mjs` serves http://localhost:5173 (`HOST=0.0.0.0` to open it from a phone on the same Wi-Fi;
   it then prints the LAN address). `.claude/launch.json` has the `trufflepig` config for the browser pane. A server
   started inside a Claude session stops when the session ends; the owner can run it in their own terminal.
-- Open it at phone size (375×812), tap "Tap to start" (it also unlocks audio). From the console:
-  `window.__game = { player, forest, camera, audio, hud, hunt, snortNow }`, e.g. teleport with `player.pos.set(...)`,
+- Open it at phone size in landscape (812×375), tap "Tap to start" (it also unlocks audio). The browser pane's
+  "mobile" preset is portrait and emulates touch, so it shows the rotate screen; a custom 812×375 size doesn't count
+  as a phone. The pane also blocks full screen, so that can only be checked on a real phone. From the console:
+  `window.__game = { player, forest, camera, renderer, scene, audio, hud, hunt, setPaused, sky, snortNow }`, e.g. teleport with `player.pos.set(...)`,
   turn with `player.heading`, find truffles with `[...forest.nearbyTruffles(x, z, range)]`, set the counter with
   `hud.setTruffles(n)`, trigger a nose raise with `snortNow()`. Modules can be imported directly
   (`await import('/src/noise.js')`) for checks such as `streamDist`.
@@ -107,6 +119,8 @@ Owner preferences:
 World and look
 - Pastel afternoon: pastel blue sky fading to a peach haze, warm low sun from the side (`sunDir`) so both the barn's
   front and the pig's back are lit, soft shadows, fog, floating pollen, warm vignette. Low-poly flat-shaded props.
+- Light white feather (cirrus) clouds, drawn in the sky shader (`cirrus()`): long thin streaks with fine fibres on a
+  flat cloud layer, fading into the haze near the horizon, drifting very slowly with game time.
 - The barn (pastel red, cream roof, white X doors) stands just behind the spawn point, doors facing it, in a tree-free
   meadow (`inClearing`).
 - The pig: smooth pink skin. A shell-fur "fuzz" was tried and **removed at the owner's request** (looked weird).
@@ -115,11 +129,23 @@ Controls
 - Press anywhere and drag; a ring and pink knob show the joystick. Direction steers, distance sets speed.
 - Raising its nose does **not** slow the pig down (owner's request).
 
+Screens and buttons
+- Pause button in the **top-right corner** (right of the truffle counter); Escape or P on a keyboard. Pause menu:
+  a pink "Game paused" banner, Resume, and "Sound: on/off" (the only mute control; remembered on the device in
+  `localStorage` `tp-muted`). Paused = everything frozen: movement, wind sway, water, mist, sound (the audio clock is
+  suspended). Switching apps or locking the phone pauses the game.
+- Phones (`pointer: coarse`) held upright get a full "Turn your phone sideways" screen (tilting phone icon) and the
+  game freezes until it's sideways. Desktop browsers are never blocked.
+- Full screen: on a phone the first tap anywhere (normally "Tap to start") enters full screen and asks Android to lock
+  landscape. Browsers don't allow full screen without a tap, so it can't happen on page load. A full-screen button sits
+  bottom-left whenever the game isn't full screen; if the player leaves full screen, only that button brings it back.
+  iPhones don't support full screen for web pages, so the button is hidden there.
+
 HUD
 - Top left: minimap. Pig nose (pink, two nostrils) at the centre with a view cone; barn icon at its real spot when
   in range; when out of range the barn sits **on the rim line itself** pointing home, with the distance ("94 m")
   just inside next to it. No distance label when the barn is in range.
-- Top right: truffle counter (truffle icon + number, bounces on change), mute button below it.
+- Top right: truffle counter (truffle icon + number, bounces on change), then the pause button.
 - Speech bubble over the pig: only "squee!" / "squee! squee!" when very close to a truffle. The "sniff sniff"
   bubble on the nose raise was **removed at the owner's request**.
 
@@ -138,6 +164,9 @@ Truffles (owner asked for them to be scarce, with a long trail to follow)
   Never in or near water. Dug-up truffles stay gone (`forest.collected`, survives chunk reloads, not saved).
 - Invisible in the ground; they give off mist: faint wisps only within `WISP_RANGE` 18 m, a strong steady plume
   from the spot within `NEAR` 7 m.
+- Mist and dirt are camera-facing squares in one instanced mesh (`Particles`), not GL point sprites: phone GPUs cap
+  point size, which made close-up mist shrink and fade on phones. Phones also draw the mist 1.4× stronger
+  (`MIST_BOOST`) because the owner found the yellow fumes hard to see on a phone screen.
 - Scent clouds: within `SCENT_RANGE` 75 m, faint yellow clouds appear a few metres ahead in the truffle's direction
   and drift to the pig, fading as they arrive; they don't persist. More frequent and stronger as you close in.
 - Excitement: nose up and sniffing the air, looking around, ears perked, faster tail wag, more frequent nose raises.

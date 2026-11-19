@@ -14,52 +14,61 @@ const MIST = [1.0, 0.86, 0.3];   // warm yellow (sRGB)
 const DIRT = [0.55, 0.42, 0.34];
 
 // ---------- particles ----------
-// One Points object for all mist puffs and dirt clods; soft round sprites sized in metres.
+// All mist puffs and dirt clods, drawn as soft round camera-facing squares sized in metres.
+// (They used to be GL point sprites, but phone GPUs cap point size, so close-up mist shrank
+// and faded on phones while desktops showed it in full.)
+// Phones also get stronger mist: small screens and daylight glare wash out the faint yellow.
+const MIST_BOOST = matchMedia('(pointer: coarse)').matches ? 1.4 : 1.0;
+
 class Particles {
   constructor(scene, max = 260) {
     this.max = max;
     this.p = Array.from({ length: max }, () => ({ alive: false }));
     this.next = 0;
-    const geo = new THREE.BufferGeometry();
+    const quad = new THREE.PlaneGeometry(1, 1);
+    const geo = new THREE.InstancedBufferGeometry();
+    geo.index = quad.index;
+    geo.setAttribute('position', quad.attributes.position);
+    geo.setAttribute('uv', quad.attributes.uv);
+    geo.instanceCount = max;
     this.pos = new Float32Array(max * 3);
     this.size = new Float32Array(max);
     this.alpha = new Float32Array(max);
     this.col = new Float32Array(max * 3);
     const attr = (name, arr, n) => {
-      const a = new THREE.BufferAttribute(arr, n);
+      const a = new THREE.InstancedBufferAttribute(arr, n);
       a.setUsage(THREE.DynamicDrawUsage);
       geo.setAttribute(name, a);
     };
-    attr('position', this.pos, 3);
-    attr('aSize', this.size, 1);
-    attr('aAlpha', this.alpha, 1);
-    attr('aColor', this.col, 3);
+    attr('iOffset', this.pos, 3);
+    attr('iSize', this.size, 1);
+    attr('iAlpha', this.alpha, 1);
+    attr('iColor', this.col, 3);
     this.geo = geo;
-    this.uniforms = { uScale: { value: 800 } };
     const mat = new THREE.ShaderMaterial({
-      uniforms: this.uniforms,
+      uniforms: { uBoost: { value: MIST_BOOST } },
       transparent: true,
       depthWrite: false,
       vertexShader: `
-        attribute float aSize; attribute float aAlpha; attribute vec3 aColor;
-        uniform float uScale;
-        varying float vAlpha; varying vec3 vColor;
+        attribute vec3 iOffset; attribute float iSize; attribute float iAlpha; attribute vec3 iColor;
+        varying float vAlpha; varying vec3 vColor; varying vec2 vUv;
         void main() {
-          vec4 mv = modelViewMatrix * vec4(position, 1.0);
+          vec4 mv = modelViewMatrix * vec4(iOffset, 1.0);
+          mv.xy += position.xy * iSize;   // face the camera
           gl_Position = projectionMatrix * mv;
-          gl_PointSize = aSize * uScale / max(0.1, -mv.z);
-          vAlpha = aAlpha; vColor = aColor;
+          vAlpha = iAlpha; vColor = iColor; vUv = uv;
         }`,
       fragmentShader: `
-        varying float vAlpha; varying vec3 vColor;
+        uniform float uBoost;
+        varying float vAlpha; varying vec3 vColor; varying vec2 vUv;
         void main() {
-          float d = length(gl_PointCoord - 0.5) * 2.0;
+          float d = length(vUv - 0.5) * 2.0;
           float a = smoothstep(1.0, 0.0, d);
           a = a * (0.55 + 0.45 * a);
-          gl_FragColor = vec4(vColor, a * vAlpha);
+          gl_FragColor = vec4(vColor, min(1.0, a * vAlpha * uBoost));
         }`,
     });
-    this.points = new THREE.Points(geo, mat);
+    this.points = new THREE.Mesh(geo, mat);
     this.points.frustumCulled = false;
     this.points.renderOrder = 3;
     scene.add(this.points);
@@ -94,7 +103,7 @@ class Particles {
       const c = p.dirt ? DIRT : MIST;
       this.col[i * 3] = c[0]; this.col[i * 3 + 1] = c[1]; this.col[i * 3 + 2] = c[2];
     }
-    for (const n of ['position', 'aSize', 'aAlpha', 'aColor']) this.geo.attributes[n].needsUpdate = true;
+    for (const n of ['iOffset', 'iSize', 'iAlpha', 'iColor']) this.geo.attributes[n].needsUpdate = true;
   }
 }
 
@@ -150,8 +159,6 @@ export class TruffleHunt {
 
   get digging() { return this.digT >= 0; }
   get digAmount() { return this.digging ? Math.min(1, this.digT / 0.25, (DIG_TIME + 0.2 - this.digT) / 0.3) : 0; }
-
-  setPixelScale(v) { this.fx.uniforms.uScale.value = v; }
 
   update(dt, player) {
     const px = player.pos.x, pz = player.pos.z;

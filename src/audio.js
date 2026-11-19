@@ -8,6 +8,7 @@ export class Ambience {
   constructor() {
     this.ctx = null;
     this.muted = false;
+    this.paused = false;
     this.volume = 0.9;
   }
 
@@ -20,7 +21,7 @@ export class Ambience {
     this.master = ctx.createGain();
     this.master.gain.value = 0;
     this.master.connect(ctx.destination);
-    this.master.gain.linearRampToValueAtTime(this.volume, ctx.currentTime + 3);
+    this.master.gain.linearRampToValueAtTime(this.muted ? 0 : this.volume, ctx.currentTime + 3);
 
     this.pink = this.noiseBuffer(6, 'pink');
     this.brown = this.noiseBuffer(6, 'brown');
@@ -45,8 +46,15 @@ export class Ambience {
     this.loadSamples();
 
     document.addEventListener('visibilitychange', () => {
-      if (document.hidden) ctx.suspend(); else ctx.resume();
+      if (document.hidden) ctx.suspend(); else if (!this.paused) ctx.resume();
     });
+  }
+
+  // Pausing silences everything (the whole audio clock stops) until resumed.
+  setPaused(paused) {
+    this.paused = paused;
+    if (!this.ctx) return;
+    if (paused) this.ctx.suspend(); else if (!document.hidden) this.ctx.resume();
   }
 
   toggleMute() {

@@ -55,6 +55,14 @@ export class Joystick {
     this.knob.classList.remove('joy-on');
   }
 
+  // Drop any drag in progress (e.g. when the game pauses).
+  cancel() {
+    this.id = null;
+    this.x = this.y = 0;
+    this.base.classList.remove('joy-on');
+    this.knob.classList.remove('joy-on');
+  }
+
   placeKnob(dx, dy) {
     this.knob.style.transform = `translate(${this.ox + dx - 29}px, ${this.oy + dy - 29}px)`;
   }

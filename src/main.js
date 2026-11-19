@@ -43,7 +43,8 @@ sun.shadow.bias = -0.0006;
 sun.shadow.normalBias = 0.05;
 scene.add(sun, sun.target);
 
-// Sky dome: pastel blue overhead fading into the warm haze, with a soft sun glow.
+// Sky dome: pastel blue overhead fading into the warm haze, with a soft sun glow
+// and light, feathery white cirrus clouds that drift very slowly.
 const sky = new THREE.Mesh(
   new THREE.SphereGeometry(450, 32, 16),
   new THREE.ShaderMaterial({
@@ -55,15 +56,41 @@ const sky = new THREE.Mesh(
       horizon: { value: FOG.clone() },
       sunCol: { value: new THREE.Color('#fff2cf') },
       sunDir: { value: sunDir },
+      uTime: { value: 0 },
     },
     vertexShader: `varying vec3 vDir;
       void main() { vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-    fragmentShader: `uniform vec3 top; uniform vec3 horizon; uniform vec3 sunCol; uniform vec3 sunDir; varying vec3 vDir;
+    fragmentShader: `uniform vec3 top; uniform vec3 horizon; uniform vec3 sunCol; uniform vec3 sunDir; uniform float uTime;
+      varying vec3 vDir;
+      float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+      float noise(vec2 p) {
+        vec2 i = floor(p), f = fract(p);
+        vec2 u = f * f * (3.0 - 2.0 * f);
+        return mix(mix(hash(i), hash(i + vec2(1, 0)), u.x), mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), u.x), u.y);
+      }
+      float fbm(vec2 p) {
+        float v = 0.0, a = 0.5;
+        for (int i = 0; i < 5; i++) { v += a * noise(p); p = p * 2.03 + 17.1; a *= 0.5; }
+        return v;
+      }
+      // Feather (cirrus) clouds on a flat cloud layer: long wispy streaks with fine fibres.
+      float cirrus(vec3 d) {
+        vec2 p = d.xz / max(d.y, 0.05) * 2.2;
+        p = mat2(0.8, -0.6, 0.6, 0.8) * p + vec2(uTime * 0.006, 0.0);
+        p += 0.6 * vec2(fbm(p * 0.5), fbm(p * 0.5 + 7.3)) ;      // curl the streaks a little
+        float body = fbm(vec2(p.x * 0.35, p.y * 1.4));           // stretched: long, thin bands
+        float fibres = fbm(vec2(p.x * 0.8, p.y * 11.0));         // hair-like strands along them
+        float c = smoothstep(0.4, 0.68, body) * (0.4 + 0.6 * fibres);
+        return c * smoothstep(0.015, 0.12, d.y);                   // fade into the haze near the horizon
+      }
       void main() {
         vec3 d = normalize(vDir);
         float h = clamp(d.y, 0.0, 1.0);
         vec3 c = mix(horizon, top, pow(smoothstep(0.0, 0.7, h), 0.8));
         float s = max(dot(d, sunDir), 0.0);
+        float cl = cirrus(d);
+        vec3 cloudCol = mix(vec3(1.0, 0.995, 0.985), sunCol, pow(s, 4.0) * 0.6);
+        c = mix(c, cloudCol, cl * 0.8);
         c += sunCol * (pow(s, 90.0) * 0.8 + pow(s, 8.0) * 0.22);
         gl_FragColor = vec4(c, 1.0);
         #include <colorspace_fragment>
@@ -200,17 +227,95 @@ let started = false;
 document.getElementById('play').addEventListener('click', () => {
   audio.start();
   started = true;
-  joy.enabled = true;
   nextSnort = 3 + Math.random() * 3;
   document.getElementById('start').classList.add('hide');
+  pauseBtn.classList.remove('hidden');
+  applyHalt();
 });
 
-const muteBtn = document.getElementById('mute');
-muteBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
-muteBtn.addEventListener('click', () => {
-  const muted = audio.toggleMute();
-  muteBtn.classList.toggle('off', muted);
+// ---------- pause menu & orientation ----------
+// The world freezes (movement, wind, mist, sound) while paused or while a phone is held upright.
+const pauseBtn = document.getElementById('pause-btn');
+const pauseEl = document.getElementById('pause');
+const soundBtn = document.getElementById('sound');
+const rotateEl = document.getElementById('rotate');
+let paused = false;
+let needsRotate = false;
+const halted = () => paused || needsRotate;
+
+function applyHalt() {
+  const h = halted();
+  joy.enabled = started && !h;
+  if (h) { joy.cancel(); keys.clear(); }
+  audio.setPaused(h);
+}
+
+function setPaused(p) {
+  if (!started) return;
+  paused = p;
+  pauseEl.classList.toggle('hidden', !p);
+  applyHalt();
+}
+
+pauseBtn.classList.add('hidden'); // shown once the game starts
+pauseBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+pauseBtn.addEventListener('click', () => setPaused(true));
+document.getElementById('resume').addEventListener('click', () => setPaused(false));
+addEventListener('keydown', (e) => { if (e.code === 'Escape' || e.code === 'KeyP') setPaused(!paused); });
+// Leaving the app (switching apps, locking the phone) pauses the game.
+document.addEventListener('visibilitychange', () => { if (document.hidden) setPaused(true); });
+
+// Sound on/off lives in the pause menu and is remembered on this device.
+function showSound() {
+  soundBtn.textContent = audio.muted ? 'Sound: off' : 'Sound: on';
+  soundBtn.setAttribute('aria-pressed', String(!audio.muted));
+}
+try { audio.muted = localStorage.getItem('tp-muted') === '1'; } catch {}
+showSound();
+soundBtn.addEventListener('click', () => {
+  audio.toggleMute();
+  try { localStorage.setItem('tp-muted', audio.muted ? '1' : '0'); } catch {}
+  showSound();
 });
+
+// Phones must be held sideways; an upright phone gets the "turn your phone" screen.
+const isPhone = matchMedia('(pointer: coarse)').matches;
+function checkOrientation() {
+  needsRotate = isPhone && innerHeight > innerWidth;
+  rotateEl.classList.toggle('hidden', !needsRotate);
+  applyHalt();
+}
+addEventListener('resize', checkOrientation);
+addEventListener('orientationchange', checkOrientation);
+checkOrientation();
+
+// ---------- full screen ----------
+// Browsers only allow full screen from a tap, so phones go full screen on their first tap
+// (usually "Tap to start"). The bottom-left button offers it again whenever it's off.
+// iPhones don't support full screen for web pages, so the button stays hidden there.
+const fsBtn = document.getElementById('fs-btn');
+const docEl = document.documentElement;
+const fsSupported = !!(docEl.requestFullscreen || docEl.webkitRequestFullscreen);
+const isFullscreen = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
+
+async function enterFullscreen() {
+  try {
+    if (docEl.requestFullscreen) await docEl.requestFullscreen({ navigationUI: 'hide' });
+    else docEl.webkitRequestFullscreen();
+  } catch {}
+  try { await screen.orientation?.lock?.('landscape'); } catch {} // Android: keep it sideways
+}
+function showFsButton() { fsBtn.classList.toggle('hidden', !fsSupported || isFullscreen()); }
+document.addEventListener('fullscreenchange', showFsButton);
+document.addEventListener('webkitfullscreenchange', showFsButton);
+showFsButton();
+
+fsBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+fsBtn.addEventListener('click', enterFullscreen);
+if (isPhone && fsSupported) {
+  // first tap anywhere; if the player later leaves full screen, only the button brings it back
+  addEventListener('pointerdown', () => { if (!isFullscreen()) enterFullscreen(); }, { once: true, capture: true });
+}
 
 const sniffEl = document.getElementById('sniff');
 function showBubble(text) {
@@ -371,19 +476,21 @@ function resize() {
   camera.aspect = w / h;
   camera.fov = camera.aspect < 1 ? 72 : 58;
   camera.updateProjectionMatrix();
-  // metres -> pixels for the mist particles
-  hunt.setPixelScale(renderer.domElement.height * 0.5 * camera.projectionMatrix.elements[5]);
 }
 addEventListener('resize', resize);
 resize();
 
 let last = performance.now();
+let gameTime = 0; // advances only while the game runs, so wind and water freeze on pause
 function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
-  time.value = now / 1000;
-
-  update(dt);
+  if (!halted()) {
+    gameTime += dt;
+    time.value = gameTime;
+    sky.material.uniforms.uTime.value = gameTime;
+    update(dt);
+  }
 
   // Camera stays snugly behind the pig's head.
   cameraTargets(_tmp, camLook);
@@ -405,4 +512,4 @@ function frame(now) {
 requestAnimationFrame(frame);
 
 // For debugging in the console.
-window.__game = { player, forest, camera, audio, hud, hunt, snortNow: () => { nextSnort = 0; } };
+window.__game = { player, forest, camera, renderer, scene, audio, hud, hunt, setPaused, sky, snortNow: () => { nextSnort = 0; } };
