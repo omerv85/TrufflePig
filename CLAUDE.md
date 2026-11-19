@@ -66,7 +66,9 @@ voice is recorded.
    commit) if a deploy seems missing.
 4. Tell the owner what changed and that it's live.
 
-There is no version number yet (RatSniper has one: `VERSION`, `version.json`, git tags). Ask the owner before adding it.
+Version: a small label under "Tap to start" (`<div id="version">` in `index.html`, e.g. `v0.1`) so the owner can see
+which build a phone is showing. **On every push to GitHub, bump it** (v0.1 → v0.2 → …) in the same commit, and tell
+the owner the version number you pushed.
 
 Owner preferences:
 - For new visual content (new creatures, props, effects), **show it for review**: screenshots from a local preview.
@@ -181,5 +183,5 @@ Streams
 ## Ideas discussed but not built
 - Enemies (the owner's next step after truffles).
 - Returning to the barn with the truffles as a goal (the reason for the barn and minimap).
-- A version number and in-game update check like RatSniper's.
+- An in-game update check like RatSniper's.
 - More Pixabay pig sounds (the owner may pick more from https://pixabay.com/sound-effects/search/pig/).
