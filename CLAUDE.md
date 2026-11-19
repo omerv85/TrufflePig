@@ -1,0 +1,156 @@
+# TrufflePig: project guide for Claude sessions
+
+Read this first. It explains what the game is, how the code is laid out, how to ship a change, and the
+design decisions the owner (GitHub user `omerv85`) has already made, so you don't undo them.
+
+- Live game: https://trufflepig.o-vertman.workers.dev/ (a Cloudflare Worker named `trufflepig` on the owner's
+  Cloudflare account, connected to this GitHub repo with Workers Builds, so every push to `main` is published
+  automatically in about a minute). `wrangler.jsonc` makes it a static-assets Worker serving the repo root;
+  `.assetsignore` keeps tooling and docs (`CLAUDE.md`, `README.md`, `tools/`, `.claude/`, config files) off the site.
+- Repo: https://github.com/omerv85/TrufflePig
+- Sister project with the same setup and owner: RatSniper (`C:\Users\User\Documents\RatSniper`), whose `CLAUDE.md`
+  this one follows.
+
+## What the game is
+
+A mobile-first 3D forest wander. You are a cute pink pig, seen from just behind its head (first-person-ish
+third person, see the owner's sketch: head and ears at the bottom of the screen, forest ahead). The pig roams an
+endless, procedurally generated pastel forest on a warm afternoon, follows faint yellow scent mist to truffles
+hidden in the ground beside tree trunks, digs them up, and can find its way back to the barn where it started
+using the minimap. Tested in portrait at phone size (375×812); desktop works with mouse or keyboard.
+
+Planned next (owner's roadmap): **enemies**. Nothing for them is built yet.
+
+## Files
+
+No build step and no npm dependencies: plain ES modules, Three.js 0.160.0 from jsDelivr via an import map in
+`index.html`, the Caveat font from Google Fonts. Ambient sound is synthesized with Web Audio; only the pig's
+voice is recorded.
+- `index.html`: canvas, HUD (minimap canvas, truffle counter, mute button), start card, speech bubble, import map.
+- `src/style.css`: all styles (HUD, joystick, start card, bubble).
+- `src/main.js`: entry point. Renderer, lights, sky dome, fog, pollen motes, water ripples, camera, input, the
+  movement loop, the pig's periodic nose raise (`updateSnort`), wading, and wiring of every other module.
+- `src/noise.js`: seeded hashing/noise (`hash2`, `mulberry32`, `fbm`), terrain (`baseHeight`, `terrainHeight`)
+  and the stream network (`streamDist`, `waterLevel`, `waterDepth`).
+- `src/forest.js`: the chunked forest (`Forest`, `buildChunk`), tree/bush/rock/grass/flower/reed props, stream water
+  meshes, colliders, truffle placement, `BARN_POS`, and the two shared materials (`createForestMaterial` with wind sway
+  and near-camera dither fade, `createWaterMaterial`).
+- `src/pig.js`: the pig model (primitives) and `animate()` (trot, ears, tail, nose raise, excitement, digging).
+- `src/joystick.js`: floating drag joystick.
+- `src/hud.js`: minimap and truffle counter (`Hud`).
+- `src/barn.js`: the barn at the start point (`createBarn`), with a box collider.
+- `src/truffles.js`: the truffle hunt (`TruffleHunt`): mist particles, scent clouds, excitement, squeals, digging,
+  the reward.
+- `src/audio.js`: `Ambience`: synthesized breeze, leaf gusts, insect drone, cicadas, birds, brook, splashes,
+  footsteps, digging, chime; recorded pig calls (`loadSamples`, `playSample`).
+- `assets/sounds/*.mp3`: pig recordings from Pixabay (Pixabay Content License; credits in `README.md`):
+  `pig-grunt.mp3`, `pig-oink.mp3`, `pig-porco.mp3`, `pig-grunting-excitedly.mp3`.
+- `tools/serve.mjs`: local static server (Node, no packages).
+- `wrangler.jsonc`, `.assetsignore`: Cloudflare hosting (see above). `.claude/launch.json`: preview config.
+
+## How to ship a change
+
+1. Edit the files under `src/`, `index.html`, `assets/`.
+2. Test (see Testing).
+3. Commit and push to `main`; Cloudflare deploys it. Check the Worker's Deployments tab (or the GitHub check on the
+   commit) if a deploy seems missing.
+4. Tell the owner what changed and that it's live.
+
+There is no version number yet (RatSniper has one: `VERSION`, `version.json`, git tags). Ask the owner before adding it.
+
+Owner preferences:
+- For new visual content (new creatures, props, effects), **show it for review**: screenshots from a local preview.
+- Keep replies plain and concise. Test at phone size.
+- Commit and push only when asked.
+- Commit identity for this repo (repo-local git config): `omerv85 <omerv85@users.noreply.github.com>`
+  (keeps the real email private, same as RatSniper).
+- Git is at `C:\Program Files\Git\cmd\git.exe`; Node.js at `C:\Program Files\nodejs\node.exe`. No `gh` CLI and no
+  global `wrangler`. Pushes use the saved GitHub sign-in.
+
+## Testing
+
+- `node tools/serve.mjs` serves http://localhost:5173 (`HOST=0.0.0.0` to open it from a phone on the same Wi-Fi;
+  it then prints the LAN address). `.claude/launch.json` has the `trufflepig` config for the browser pane. A server
+  started inside a Claude session stops when the session ends; the owner can run it in their own terminal.
+- Open it at phone size (375×812), tap "Tap to start" (it also unlocks audio). From the console:
+  `window.__game = { player, forest, camera, audio, hud, hunt, snortNow }`, e.g. teleport with `player.pos.set(...)`,
+  turn with `player.heading`, find truffles with `[...forest.nearbyTruffles(x, z, range)]`, set the counter with
+  `hud.setTruffles(n)`, trigger a nose raise with `snortNow()`. Modules can be imported directly
+  (`await import('/src/noise.js')`) for checks such as `streamDist`.
+- If the browser pane is hidden, `requestAnimationFrame` slows or stops, so timed checks see stale state. For logic,
+  step it by hand instead, e.g. `for (...) hunt.update(1/30, player)`. That's how the scent trail was verified.
+- Audio can't be listened to in a session: check that `audio.samples` has all four clips and count `playSample` calls.
+
+## Code map
+
+- Movement (`main.js` `update`): joystick angle steers (turn rate up to `MAX_TURN`), distance from the press point
+  sets speed up to `MAX_SPEED` (5.2 m/s); keyboard WASD/arrows, Shift to trot. Collisions: `forest.collide` (tree
+  trunks, big rocks, the barn box). The pig follows the terrain and pitches with the slope.
+- Camera (`cameraTargets`): `CAM_BACK` 1.75 m behind, `CAM_UP` 1.75 m up, looking `LOOK_AHEAD` 7 m ahead at
+  `LOOK_UP`; FOV 72 in portrait, 58 in landscape. Leaves within ~1.8 m of the camera dither away so it never sits
+  inside a tree.
+- Forest (`forest.js`): `CHUNK` 36 m, `RADIUS` 3 chunks loaded around the pig, built nearest-first, 2 per frame while
+  moving. Each chunk is one merged vertex-coloured mesh (+ one water mesh if a stream crosses it), built from a
+  per-chunk seed (`hash2(cx, cz, 99)`), so the world is the same every visit. Truffles use their own seed
+  (`hash2(cx, cz, 777)`) so changing them doesn't reshuffle the trees.
+- Streams (`noise.js`): they follow the 0.5 contour of low-frequency noise, so they meander endlessly and line up
+  across chunks; `streamDist` ≈ metres from the centre. Offsets `SOX`/`SOZ` were chosen so no stream crosses the
+  barn meadow and the nearest is ~35 m from it. No trees, bushes or big rocks in or right next to the water.
+- Minimap (`hud.js`): heading-up, `MAP_RANGE` 48 m. Streams are painted into a cached world-aligned layer rebuilt
+  every 20 m. Trees from `forest.nearbyColliders`.
+- Truffle hunt (`truffles.js`): constants at the top (`SCENT_RANGE`, `WISP_RANGE`, `NEAR`, `DIG_DIST`, `DIG_TIME`).
+  `excite` 0..1 (closeness to the nearest truffle, ^1.6, smoothed) drives the pig's body language, sound choice and
+  frequency, and cloud frequency/strength.
+
+## Design decisions already made (don't reverse without asking)
+
+World and look
+- Pastel afternoon: pastel blue sky fading to a peach haze, warm low sun from the side (`sunDir`) so both the barn's
+  front and the pig's back are lit, soft shadows, fog, floating pollen, warm vignette. Low-poly flat-shaded props.
+- The barn (pastel red, cream roof, white X doors) stands just behind the spawn point, doors facing it, in a tree-free
+  meadow (`inClearing`).
+- The pig: smooth pink skin. A shell-fur "fuzz" was tried and **removed at the owner's request** (looked weird).
+
+Controls
+- Press anywhere and drag; a ring and pink knob show the joystick. Direction steers, distance sets speed.
+- Raising its nose does **not** slow the pig down (owner's request).
+
+HUD
+- Top left: minimap. Pig nose (pink, two nostrils) at the centre with a view cone; barn icon at its real spot when
+  in range; when out of range the barn sits **on the rim line itself** pointing home, with the distance ("94 m")
+  just inside next to it. No distance label when the barn is in range.
+- Top right: truffle counter (truffle icon + number, bounces on change), mute button below it.
+- Speech bubble over the pig: only "squee!" / "squee! squee!" when very close to a truffle. The "sniff sniff"
+  bubble on the nose raise was **removed at the owner's request**.
+
+Pig behaviour and sounds (owner-chosen mapping)
+- Every 5-13 s (more often near a truffle) the pig raises its nose: **"pig grunt"** recording, then quiet
+  synthesized sniffs.
+- Catching a truffle's scent: **"pig oink"** when it first smells one and each time a drifting yellow cloud reaches
+  its snout (at most about once a second; snout twitch). Pitched up and louder as excitement grows.
+- Close to a truffle (excite > 0.6, about 20 m): **"porco"** squeals, short slices of its two 2-second phrases, longer
+  and louder the closer; sometimes a whole phrase right on top of it. Each call finishes before the next starts.
+- Found a truffle: happy bell chime plus **"pig grunting excitedly"** (first 1.5 s of the file).
+- Synthesized grunt/squeal remain only as fallbacks if a file fails to load.
+
+Truffles (owner asked for them to be scarce, with a long trail to follow)
+- Hidden beside ~1.2% of trees (`trng() < 0.012`): median ~43 m between neighbours, nearest to the barn ~56 m.
+  Never in or near water. Dug-up truffles stay gone (`forest.collected`, survives chunk reloads, not saved).
+- Invisible in the ground; they give off mist: faint wisps only within `WISP_RANGE` 18 m, a strong steady plume
+  from the spot within `NEAR` 7 m.
+- Scent clouds: within `SCENT_RANGE` 75 m, faint yellow clouds appear a few metres ahead in the truffle's direction
+  and drift to the pig, fading as they arrive; they don't persist. More frequent and stronger as you close in.
+- Excitement: nose up and sniffing the air, looking around, ears perked, faster tail wag, more frequent nose raises.
+- Digging starts automatically when the pig reaches the spot (`DIG_DIST`): it stops, turns to face it, digs for
+  2.6 s (head down, trotters scraping, dirt flying, scratch sounds), leaves a dug-earth patch; then the truffle pops
+  up above the pig's head and spins away, and the counter goes up. Input is ignored while digging.
+
+Streams
+- Small streams the pig can wade through: slower in water (up to 40%), splashes instead of footsteps, ripple rings,
+  a babbling-brook sound that fades in within ~25 m. Sandy banks, reeds and cattails, pebbles. Shown on the minimap.
+
+## Ideas discussed but not built
+- Enemies (the owner's next step after truffles).
+- Returning to the barn with the truffles as a goal (the reason for the barn and minimap).
+- A version number and in-game update check like RatSniper's.
+- More Pixabay pig sounds (the owner may pick more from https://pixabay.com/sound-effects/search/pig/).

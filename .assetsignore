@@ -6,6 +6,7 @@
 node_modules
 tools
 README.md
+CLAUDE.md
 wrangler.jsonc
 package.json
 package-lock.json
