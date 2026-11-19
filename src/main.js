@@ -225,6 +225,8 @@ const audio = new Ambience();
 let started = false;
 
 document.getElementById('play').addEventListener('click', () => {
+  // on phones, starting also goes full screen (same as RatSniper); must run inside this tap's click
+  if (isTouch() && fsSupported && !isFullscreen()) enterFullscreen();
   audio.start();
   started = true;
   nextSnort = 3 + Math.random() * 3;
@@ -290,8 +292,8 @@ addEventListener('orientationchange', checkOrientation);
 checkOrientation();
 
 // ---------- full screen ----------
-// Browsers only allow full screen from a tap, so phones go full screen on their first tap
-// (usually "Tap to start"). The bottom-left button offers it again whenever it's off.
+// Browsers only allow full screen from a tap, so phones go full screen when "Tap to start" is
+// tapped. The bottom-left button offers it again whenever it's off.
 // iPhones don't support full screen for web pages, so the button stays hidden there.
 const fsBtn = document.getElementById('fs-btn');
 const docEl = document.documentElement;
@@ -312,18 +314,7 @@ showFsButton();
 
 fsBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
 fsBtn.addEventListener('click', enterFullscreen);
-if (isPhone && fsSupported) {
-  // first tap anywhere; if the player later leaves full screen, only the button brings it back.
-  // Phones only treat a touch as a user gesture when the finger lifts (pointerup), not on pointerdown.
-  // Keep trying on each tap until full screen has been entered once.
-  const autoFs = () => {
-    if (isFullscreen()) return;
-    enterFullscreen().then(() => {
-      if (isFullscreen()) removeEventListener('pointerup', autoFs, true);
-    });
-  };
-  addEventListener('pointerup', autoFs, true);
-}
+function isTouch() { return isPhone || 'ontouchstart' in window; }
 
 const sniffEl = document.getElementById('sniff');
 function showBubble(text) {

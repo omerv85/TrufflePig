@@ -3,7 +3,7 @@
   "configurations": [
     {
       "name": "trufflepig",
-      "runtimeExecutable": "node",
+      "runtimeExecutable": "C:\\Program Files\\nodejs\\node.exe",
       "runtimeArgs": ["tools/serve.mjs"],
       "port": 5173
     }
