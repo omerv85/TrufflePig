@@ -1,0 +1,11 @@
+// Cloudflare Worker that serves TrufflePig as a static site (no build step).
+// Cloudflare Workers Builds deploys this on every push to main with `npx wrangler deploy`.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "trufflepig",
+  "compatibility_date": "2025-09-01",
+  "assets": {
+    // Serve the repo root; .assetsignore keeps tooling and docs out of the upload.
+    "directory": "./"
+  }
+}

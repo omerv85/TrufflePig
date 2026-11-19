@@ -1,0 +1,13 @@
+# Files in the repo that are not part of the website
+.git
+.github
+.claude
+.wrangler
+node_modules
+tools
+README.md
+wrangler.jsonc
+package.json
+package-lock.json
+.gitignore
+.assetsignore
