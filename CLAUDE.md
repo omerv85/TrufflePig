@@ -190,6 +190,15 @@ World and look
   flat cloud layer, fading into the haze near the horizon, drifting very slowly with game time. They disperse
   through dusk (streaks thin and break into strands, gone at full night, owner's request) and gather again at
   morning (`k` in `cirrus()`).
+- Tree kinds: round, pine and birch, plus broad oaks, tall poplars, tall dark spruces and forked trees (`oakTree`,
+  `poplarTree`, `spruceTree`, `forkTree`: a Y-shaped trunk with a big round leaf crown on top of each branch, owner's design: the two crowns are meant to overlap, and each branch has its own random tilt, direction and length;
+  its collider carries `fork`, the branches' direction; `branchTree`, owner's design: a straight trunk with a crown on top
+  and one or two branches angling off to the side partway up, each with its own crown, collider field `side`; `twinBranchTree`, owner's design: the same but always two
+  branches on opposite sides, at the same angle, from different heights up the trunk; oaks and spruces form groves). The forked and side-branch kinds are the most common (owner's request: together about 38% of all trees; the
+  original three about 37%). The extra kinds replace about 60% of trees using their own random stream
+  (`vrng`, `treeVariant`); the original tree is still built into a throwaway builder so `rng` and the forest layout and
+  truffles stay unchanged. Their colliders carry `kind`. A pink blossom tree and an apple tree were tried and
+  **removed at the owner's request**.
 - The barn (pastel red, cream roof, white X doors) stands just behind the spawn point, doors facing it, in a tree-free
   meadow (`inClearing`).
 - Tree leaves never hang lower than `LEAF_CLEAR` 2 m above the highest ground under the canopy (the pig is 1.44 m

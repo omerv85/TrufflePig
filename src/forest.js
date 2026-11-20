@@ -19,6 +19,10 @@ const PAL = {
   birchLeaf: [C('#d8eea0'), C('#cbe89c')],
   trunk: C('#b98f74'),
   birch: C('#f2ece2'),
+  oak: [C('#8ccb86'), C('#9ad18a'), C('#86c592')],
+  oakBark: C('#a7826b'),
+  poplar: [C('#b8de8c'), C('#aad78c'), C('#c3e292')],
+  spruce: [C('#73b398'), C('#6cae94'), C('#7cb99c')],
   bush: [C('#93d293'), C('#a8db92')],
   tuft: [C('#a2d98a'), C('#b8e398'), C('#95d39a'), C('#cbe79a')],
   flower: [C('#ffc4d6'), C('#dccbff'), C('#fff0a3'), C('#ffffff'), C('#ffd2b0')],
@@ -216,6 +220,165 @@ function birchTree(b, x, y, z, rng, colliders, wx, wz) {
   colliders.push({ x: wx, z: wz, r: 0.2, leaf: y + h + 0.2 });
 }
 
+// ---------- extra tree kinds ----------
+// Picked from their own random stream (see buildChunk), so they replace some of the trees
+// above in place without moving anything else in the forest.
+
+// Broad oak: thick trunk, two side boughs, a wide flattish crown of many leaf balls.
+function oakTree(b, x, y, z, rng, colliders, wx, wz) {
+  const s = 1.4 + rng() * 0.4;
+  const R = 2.3 + rng() * 0.8;
+  let h = 2.3 + rng() * 0.8;
+  h += canopyLift(wx, wz, y + h - R * 0.35, R * 1.5); // lowest leaf ball bottom
+  const cy = y + h + R * 0.25;
+  b.add(T.trunk, mat(x, y - 0.2, z, s, h + 0.9, s, rng() * 6), PAL.oakBark, rng, 0, 0.08, 0.05);
+  for (let i = 0; i < 2; i++) {
+    const a = rng() * Math.PI * 2 + i * Math.PI;
+    _v.set(Math.cos(a) * 0.75, 1, Math.sin(a) * 0.75).normalize();
+    b.add(T.trunk, matDir(x, y + h * 0.7, z, _v, 0.55, R * 0.8, 0.55), PAL.oakBark, rng, 0.05, 0.2, 0.05);
+  }
+  const col = pick(PAL.oak, rng);
+  b.add(T.blob, mat(x, cy + R * 0.15, z, R, R * 0.62, R, rng() * 6), col, rng, 0.15, 0.35);
+  const n = 5 + Math.floor(rng() * 3);
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2 + rng() * 0.6, d = R * (0.7 + rng() * 0.25), r = R * (0.42 + rng() * 0.18);
+    _tmpC.copy(col).offsetHSL((rng() - 0.5) * 0.03, 0, (rng() - 0.5) * 0.07);
+    b.add(T.blob, mat(x + Math.cos(a) * d, cy + (rng() - 0.4) * R * 0.3, z + Math.sin(a) * d, r, r * 0.75, r, rng() * 6), _tmpC, rng, 0.2, 0.42);
+  }
+  colliders.push({ x: wx, z: wz, r: 0.3 * s + 0.05, leaf: cy });
+}
+
+// Forked tree: the trunk splits in a Y into two branches, each topped with its own leaf crown.
+function forkTree(b, x, y, z, rng, colliders, wx, wz) {
+  const s = 1.0 + rng() * 0.3;
+  let f = 1.5 + rng() * 0.7;                 // fork height
+  const R = 2.2 + rng() * 0.5;               // crown size (big: the two crowns overlap, owner's request)
+  const a0 = rng() * Math.PI;
+  // Each branch gets its own tilt from vertical, direction and length, so no two Ys look alike.
+  const br = [0, 1].map((k) => ({
+    a: a0 + k * Math.PI + (rng() - 0.5) * 0.8,
+    t: 0.35 + rng() * 0.45,
+    L: 2.8 + rng() * 0.9,
+  }));
+  let low = Infinity, reach = 0;
+  for (const q of br) {
+    low = Math.min(low, Math.cos(q.t) * q.L);
+    reach = Math.max(reach, Math.sin(q.t) * q.L);
+  }
+  f += canopyLift(wx, wz, y + f + low - R * 0.55, reach + R * 1.3); // lowest leaf bottom, widest reach
+  b.add(T.trunk, mat(x, y - 0.2, z, s, f + 0.35, s, rng() * 6), PAL.trunk, rng, 0, 0.06, 0.05);
+  b.add(T.blobLo, mat(x, y + f, z, 0.24 * s, 0.32 * s, 0.24 * s, rng() * 6), PAL.trunk, rng, 0.06, 0.08, 0.05); // knot at the fork
+  const col = pick(PAL.canopy, rng);
+  for (const { a, t, L } of br) {
+    _v.set(Math.cos(a) * Math.sin(t), Math.cos(t), Math.sin(a) * Math.sin(t));
+    const tx = x + _v.x * L, ty = y + f + _v.y * L + R * 0.35, tz = z + _v.z * L; // before add(), which reuses _v
+    b.add(T.trunk, matDir(x, y + f - 0.1, z, _v, 0.8 * s, L + 0.25, 0.8 * s, rng() * 6), PAL.trunk, rng, 0.06, 0.25, 0.05);
+    _tmpC.copy(col).offsetHSL((rng() - 0.5) * 0.03, 0, (rng() - 0.5) * 0.06);
+    b.add(T.blob, mat(tx, ty, tz, R, R * 0.85, R, rng() * 6), _tmpC, rng, 0.25, 0.45);
+    for (let i = 0; i < 2; i++) { // smaller balls round each crown
+      const b2 = rng() * Math.PI * 2, d = R * 0.55, r = R * (0.55 + rng() * 0.15);
+      b.add(T.blob, mat(tx + Math.cos(b2) * d, ty + (rng() - 0.2) * R * 0.4, tz + Math.sin(b2) * d, r, r * 0.85, r, rng() * 6), _tmpC, rng, 0.3, 0.5);
+    }
+  }
+  colliders.push({ x: wx, z: wz, r: 0.3 * s + 0.05, leaf: y + f + low, fork: a0 });
+}
+
+// Branched tree: a straight trunk with a crown on top, and one or two branches angling off to
+// the side partway up, each with its own crown.
+// With `twin`: always two branches at the same angle, on opposite sides, from different heights.
+function branchTree(b, x, y, z, rng, colliders, wx, wz, twin = false) {
+  const s = 1.05 + rng() * 0.3;
+  const H = 4.6 + rng() * 1.4;               // trunk height (to the top crown)
+  const R = 1.9 + rng() * 0.5;               // top crown size
+  const crowns = [{ dx: 0, dy: H, dz: 0, r: R }];
+  const nb = twin || rng() >= 0.55 ? 2 : 1;
+  const a0 = rng() * Math.PI * 2;
+  let tTwin, atTwin, gap; // drawn only for the twin, so the one/two-branch trees stay as they were
+  if (twin) { tTwin = 0.8 + rng() * 0.3; atTwin = H * (0.36 + rng() * 0.1); gap = H * (0.15 + rng() * 0.08); }
+  const br = [];
+  for (let k = 0; k < nb; k++) {
+    // two branches go off to different sides (exactly opposite on the twin)
+    const a = a0 + k * (twin ? Math.PI : Math.PI * (0.7 + rng() * 0.6));
+    const t = twin ? tTwin : 0.75 + rng() * 0.4; // angle from vertical
+    const L = 2.0 + rng() * 0.9;
+    const at = twin ? atTwin + k * gap : H * (0.42 + rng() * 0.25) + k * 0.4; // where on the trunk it starts
+    const d = [Math.cos(a) * Math.sin(t), Math.cos(t), Math.sin(a) * Math.sin(t)];
+    const r = R * (0.65 + rng() * 0.15);
+    br.push({ at, d, L });
+    crowns.push({ dx: d[0] * L, dy: at + d[1] * L, dz: d[2] * L, r });
+  }
+  // Raise the whole tree (stretching the trunk) if its lowest crown would hang into the pig's way.
+  let low = Infinity, reach = 0;
+  for (const c of crowns) {
+    low = Math.min(low, c.dy + c.r * 0.35 - c.r * 0.85);
+    reach = Math.max(reach, Math.hypot(c.dx, c.dz) + c.r * 1.3);
+  }
+  const lift = canopyLift(wx, wz, y + low, reach);
+  b.add(T.trunk, mat(x, y - 0.2, z, s, H + lift + 0.2, s, rng() * 6), PAL.trunk, rng, 0, 0.1, 0.05);
+  for (const { at, d, L } of br) {
+    _v.set(d[0], d[1], d[2]);
+    b.add(T.trunk, matDir(x, y + at + lift - 0.15, z, _v, 0.7 * s, L + 0.2, 0.7 * s, rng() * 6), PAL.trunk, rng, 0.05, 0.25, 0.05);
+  }
+  const col = pick(PAL.canopy, rng);
+  for (const c of crowns) {
+    const cx = x + c.dx, cy = y + c.dy + lift + c.r * 0.35, cz = z + c.dz;
+    _tmpC.copy(col).offsetHSL((rng() - 0.5) * 0.03, 0, (rng() - 0.5) * 0.06);
+    b.add(T.blob, mat(cx, cy, cz, c.r, c.r * 0.85, c.r, rng() * 6), _tmpC, rng, 0.25, 0.45);
+    for (let i = 0; i < 2; i++) {
+      const b2 = rng() * Math.PI * 2, d = c.r * 0.55, r = c.r * (0.55 + rng() * 0.15);
+      b.add(T.blob, mat(cx + Math.cos(b2) * d, cy + (rng() - 0.2) * c.r * 0.4, cz + Math.sin(b2) * d, r, r * 0.85, r, rng() * 6), _tmpC, rng, 0.3, 0.5);
+    }
+  }
+  colliders.push({ x: wx, z: wz, r: 0.3 * s + 0.05, leaf: y + H * 0.8 + lift, side: a0 });
+}
+
+// Two-sided tree: a straight trunk with one branch out each side, at the same angle but from
+// different heights up the trunk.
+function twinBranchTree(b, x, y, z, rng, colliders, wx, wz) {
+  branchTree(b, x, y, z, rng, colliders, wx, wz, true);
+}
+
+// Poplar: a tall narrow column of leaves on a short trunk.
+function poplarTree(b, x, y, z, rng, colliders, wx, wz) {
+  const R = 0.95 + rng() * 0.35, L = 3.6 + rng() * 1.8;
+  let h = 1.0 + rng() * 0.5;
+  h += canopyLift(wx, wz, y + h + 0.3, R * 1.1);
+  b.add(T.trunk, mat(x, y - 0.2, z, 0.8, h + 1.5, 0.8, rng() * 6), PAL.trunk, rng, 0, 0.08, 0.05);
+  const col = pick(PAL.poplar, rng);
+  const cy = y + h + 0.3 + L / 2;
+  b.add(T.blob, mat(x, cy, z, R, L / 2, R, rng() * 6), col, rng, 0.1, 0.5);
+  _tmpC.copy(col).offsetHSL(0, 0, -0.04);
+  b.add(T.blob, mat(x + (rng() - 0.5) * 0.3, cy + L * 0.08, z + (rng() - 0.5) * 0.3, R * 0.8, L * 0.42, R * 0.8, rng() * 6), _tmpC, rng, 0.15, 0.55);
+  colliders.push({ x: wx, z: wz, r: 0.22, leaf: cy - L * 0.15 });
+}
+
+// Spruce: taller and darker than the pine, five narrowing tiers up to a spike.
+function spruceTree(b, x, y, z, rng, colliders, wx, wz) {
+  const sc = 0.95 + rng() * 0.45;
+  const lift = canopyLift(wx, wz, y + 1.0 * sc, 1.9 * sc);
+  b.add(T.trunk, mat(x, y - 0.2, z, 0.8 * sc, 1.6 * sc + lift, 0.8 * sc, rng() * 6), PAL.oakBark, rng, 0, 0.05, 0.05);
+  const col = pick(PAL.spruce, rng);
+  const tiers = [[1.9, 2.1, 1.0], [1.6, 2.0, 2.0], [1.3, 1.9, 3.0], [1.0, 1.8, 4.0], [0.65, 1.8, 5.0]];
+  for (const [r, th, oy] of tiers) {
+    _tmpC.copy(col).offsetHSL(0, 0, (rng() - 0.5) * 0.04);
+    b.add(T.cone, mat(x, y + oy * sc + lift, z, r * sc, th * sc, r * sc, rng() * 6), _tmpC, rng, 0.05, 0.3);
+  }
+  colliders.push({ x: wx, z: wz, r: 0.27 * sc, leaf: y + 3 * sc + lift });
+}
+
+// Whether a tree becomes one of the extra kinds (null: keep the usual round/pine/birch).
+// Oaks gather in groves in some parts of the forest, spruces in others.
+function treeVariant(wx, wz, vr) {
+  if (vr() > 0.6) return null;
+  const g = fbm(wx * 0.011, wz * 0.011, 41, 2), u = vr();
+  if (g > 0.6 && u < 0.4) return oakTree;
+  if (g < 0.4 && u < 0.4) return spruceTree;
+  // Forked and side-branch trees are the most common of the extra kinds (owner's request).
+  return pick([oakTree, poplarTree, poplarTree, spruceTree,
+    forkTree, forkTree, forkTree, forkTree, branchTree, branchTree, branchTree, branchTree,
+    twinBranchTree, twinBranchTree, twinBranchTree, twinBranchTree], vr);
+}
+
 function bush(b, x, y, z, rng) {
   const col = pick(PAL.bush, rng);
   const n = 2 + Math.floor(rng() * 2);
@@ -243,6 +406,8 @@ function buildChunk(cx, cz) {
   // Truffles use their own random stream so adding them doesn't reshuffle the forest.
   const trng = mulberry32(Math.floor(hash2(cx, cz, 777) * 4294967296));
   const truffles = [];
+  // The extra tree kinds have their own stream too.
+  const vrng = mulberry32(Math.floor(hash2(cx, cz, 321) * 4294967296));
 
   // Sample the terrain once on a grid shared by the ground and the water.
   const step = CHUNK / GROUND_SEG, N = GROUND_SEG + 1;
@@ -336,9 +501,15 @@ function buildChunk(cx, cz) {
       const roll = rng();
       if (!spawnClear && roll < forestDensity(wx, wz)) {
         const k = rng();
-        if (k < 0.5) roundTree(b, lx, y, lz, rng, colliders, wx, wz);
-        else if (k < 0.82) pineTree(b, lx, y, lz, rng, colliders, wx, wz);
-        else birchTree(b, lx, y, lz, rng, colliders, wx, wz);
+        const base = k < 0.5 ? roundTree : k < 0.82 ? pineTree : birchTree;
+        const variant = treeVariant(wx, wz, vrng);
+        if (variant) {
+          // Build the usual tree off to the side so `rng` advances exactly as before
+          // (the rest of the chunk stays put), then the new kind in its place.
+          base(new Builder(), lx, y, lz, rng, [], wx, wz);
+          variant(b, lx, y, lz, vrng, colliders, wx, wz);
+          colliders[colliders.length - 1].kind = variant.name; // e.g. 'oakTree' (handy for finding one in tests)
+        } else base(b, lx, y, lz, rng, colliders, wx, wz);
         // Some trees hide a truffle in the ground just beside the trunk.
         if (trng() < 0.012) { // scarce: ~1 in 80 trees, roughly 100 m apart
           const tree = colliders[colliders.length - 1];
