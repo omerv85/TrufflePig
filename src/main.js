@@ -175,10 +175,11 @@ const motes = (() => {
 })();
 
 // ---------- day and night ----------
-// The light fades from afternoon through a pink dusk into a moonlit night over CYCLE/2 seconds
-// of play, then back to day over the next CYCLE/2, and so on. Only the look and the ambience
-// change; the game plays the same.
-const CYCLE = 360;
+// The light fades from afternoon through a pink dusk into a moonlit night over FADE seconds of
+// play, stays full night for NIGHT_HOLD, then fades back to day over the next FADE, and so on.
+// Only the look and the ambience change; the game plays the same.
+const FADE = 180, NIGHT_HOLD = 120;
+const CYCLE = 2 * FADE + NIGHT_HOLD;
 const clock = { t: 0 };   // seconds of play since the game (or a new game) started
 const dn = (day, dusk, night) => [new THREE.Color(day), new THREE.Color(dusk), new THREE.Color(night)];
 const PAL = {
@@ -199,11 +200,11 @@ const lerp = (a, b, k) => a + (b - a) * k;
 const moonDir = sky.material.uniforms.moonDir.value;
 const lightDir = new THREE.Vector3();
 let night = 0;
-// 0 = day, 1 = night. Eased, so it lingers a little at full day and full night.
+// 0 = day, 1 = night. The fades are eased, so they ease into and out of full day and full night.
 function nightAt(t) {
-  const p = (t % CYCLE) / CYCLE;
-  const tri = p < 0.5 ? p * 2 : 2 - p * 2;
-  return tri * tri * (3 - 2 * tri);
+  const p = t % CYCLE;
+  const k = p < FADE ? p / FADE : p < FADE + NIGHT_HOLD ? 1 : 1 - (p - FADE - NIGHT_HOLD) / FADE;
+  return k * k * (3 - 2 * k);
 }
 function applyDayNight(n) {
   night = n;

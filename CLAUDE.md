@@ -157,8 +157,9 @@ World and look
 - Tree leaves never hang lower than `LEAF_CLEAR` 2 m above the highest ground under the canopy (the pig is 1.44 m
   to the ear tips), at the owner's request: low canopies are raised and their trunks stretched (`canopyLift`), without
   changing the random sequence, so the forest layout stays the same.
-- Day and night (`main.js` "day and night", `CYCLE` 360 s): from the start (and each New game) the light fades over
-  3 min of play through a pink dusk into a moonlit night, then back to day over the next 3 min, repeating. `clock.t` only
+- Day and night (`main.js` "day and night", `FADE` 180 s, `NIGHT_HOLD` 120 s, 8 min cycle): from the start (and each
+  New game) the light fades over 3 min of play through a pink dusk into a moonlit night, stays full night for 2 min
+  (owner asked for a longer starry night), then fades back to day over the next 3 min, repeating. `clock.t` only
   advances while playing. Night: dark blue fog and sky, twinkling stars and a moon (sky shader `stars()`, `moonDir`),
   dim bluish moonlight from the moon's side, pollen motes become green fireflies, a blue vignette (`--night`). Audio
   (`setNight`): day insects, cicadas and birdsong fade out; crickets, owl hoots and quiet, muffled distant wolf howls fade
