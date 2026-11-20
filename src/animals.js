@@ -59,10 +59,11 @@ export const SPECIES = {
 };
 
 // One wolf, one bear, one witch, one docile animal at most. first: seconds of play before the first one.
+// when: wolves and bears only appear by day, the witch only by night (one already around stays when it turns).
 const SLOTS = [
-  { kinds: ['wolf'], first: 35, respawn: [25, 50] },
-  { kinds: ['bear'], first: 75, respawn: [35, 70] },
-  { kinds: ['witch'], first: 110, respawn: [35, 70] },
+  { kinds: ['wolf'], first: 35, respawn: [25, 50], when: 'day' },
+  { kinds: ['bear'], first: 75, respawn: [35, 70], when: 'day' },
+  { kinds: ['witch'], first: 110, respawn: [35, 70], when: 'night' },
   // squirrels listed three times: half of the docile animals are squirrels
   { kinds: ['deer', 'goat', 'squirrel', 'squirrel', 'squirrel', 'moose'], first: 12, respawn: [8, 20] },
 ];
@@ -492,14 +493,17 @@ export class Animals {
     slot.timer = rand(...slot.respawn);
   }
 
-  update(dt, player) {
+  // isNight: true from halfway into dusk until halfway through dawn (main.js night >= 0.5).
+  update(dt, player, isNight = false) {
     const attacker = this.attacker;
     for (const slot of this.slots) {
       if (!slot.c) {
         slot.timer -= dt;
         // never more than MAX_DANGER wolves/bears/witches around at once: this one waits its turn
         const dangerous = SPECIES[slot.kinds[0]].danger;
-        if (slot.timer <= 0 && dangerous && this.list.filter((c) => c.sp.danger).length >= MAX_DANGER) slot.timer = rand(8, 15);
+        const wrongTime = slot.when && (slot.when === 'night') !== isNight;
+        if (slot.timer <= 0 && wrongTime) slot.timer = rand(5, 12); // not its time of day: check again later
+        else if (slot.timer <= 0 && dangerous && this.list.filter((c) => c.sp.danger).length >= MAX_DANGER) slot.timer = rand(8, 15);
         else if (slot.timer <= 0) {
           slot.c = this.spawn(pick(slot.kinds), player);
           if (!slot.c) slot.timer = 3;

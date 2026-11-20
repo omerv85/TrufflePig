@@ -270,7 +270,10 @@ Birds
 Animals (the owner's design)
 - All animals use the same algorithm. At most one wolf, one bear, one witch and one docile animal (deer, goat, squirrel or moose,
   picked at random, the squirrel half the time) at a time, and **never more than two of the three dangerous ones**
-  (`MAX_DANGER`, owner's request): a predator whose timer is due while two are around waits 8-15 s and tries again. They keep apart: a new animal never appears
+  (`MAX_DANGER`, owner's request): a predator whose timer is due while two are around waits 8-15 s and tries again. **Wolves and bears only
+  appear by day, the witch only by night** (owner's request; night = `night >= 0.5` in `main.js`, i.e. from t=90 s to
+  t=390 s of each 8-min cycle; slot field `when`). One already around stays when day turns to night or back; a slot
+  whose timer is due at the wrong time of day checks again every 5-12 s. They keep apart: a new animal never appears
   within `MIN_SEP` 45 m of another, and walking animals steer away from each other inside `KEEP_APART` 35 m.
 - Witch (owner's design): appears and walks like the wolf and bear (first after 110 s, then 35-70 s after the last left).
   **"witch near"** when she comes into map range, **"witch staring"** when she stops to stare (within 26 m: she turns

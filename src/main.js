@@ -749,7 +749,7 @@ function update(dt) {
 
   forest.update(player.pos, 2);
   if (started && !attacked) hunt.update(dt, player);
-  if (started) animals.update(dt, player);
+  if (started) animals.update(dt, player, night >= 0.5);
   curse.update(dt);
   if (curse.active && curse.t > 0.12) pig.root.visible = false; // hidden in the smoke: now a toad
   birds.update(dt, player, started);
