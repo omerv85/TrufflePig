@@ -58,11 +58,14 @@ const sky = new THREE.Mesh(
       horizon: { value: FOG.clone() },
       sunCol: { value: new THREE.Color('#fff2cf') },
       sunDir: { value: sunDir },
+      moonDir: { value: new THREE.Vector3(-0.42, 0.27, -0.87).normalize() },
       uTime: { value: 0 },
+      uNight: { value: 0 },
     },
     vertexShader: `varying vec3 vDir;
       void main() { vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
     fragmentShader: `uniform vec3 top; uniform vec3 horizon; uniform vec3 sunCol; uniform vec3 sunDir; uniform float uTime;
+      uniform vec3 moonDir; uniform float uNight;
       varying vec3 vDir;
       float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
       float noise(vec2 p) {
@@ -85,6 +88,18 @@ const sky = new THREE.Mesh(
         float c = smoothstep(0.4, 0.68, body) * (0.4 + 0.6 * fibres);
         return c * smoothstep(0.015, 0.12, d.y);                   // fade into the haze near the horizon
       }
+      // Night sky: twinkling stars of a few sizes, scattered on a grid in sky angles.
+      float stars(vec3 d) {
+        vec2 a = vec2(atan(d.z, d.x), asin(clamp(d.y, -1.0, 1.0))) * 64.0;
+        vec2 cell = floor(a), f = fract(a);
+        float h = hash(cell);
+        if (h < 0.93) return 0.0;
+        vec2 at = vec2(hash(cell + 3.1), hash(cell + 7.7)) * 0.6 + 0.2;
+        float size = 0.07 + 0.12 * hash(cell + 1.3);
+        float s = smoothstep(size, 0.0, length(f - at));
+        float tw = 0.65 + 0.35 * sin(uTime * (1.5 + 3.0 * hash(cell + 5.0)) + h * 60.0);
+        return s * tw * (0.5 + 0.5 * (h - 0.93) / 0.07);
+      }
       void main() {
         vec3 d = normalize(vDir);
         float h = clamp(d.y, 0.0, 1.0);
@@ -92,8 +107,17 @@ const sky = new THREE.Mesh(
         float s = max(dot(d, sunDir), 0.0);
         float cl = cirrus(d);
         vec3 cloudCol = mix(vec3(1.0, 0.995, 0.985), sunCol, pow(s, 4.0) * 0.6);
-        c = mix(c, cloudCol, cl * 0.8);
-        c += sunCol * (pow(s, 90.0) * 0.8 + pow(s, 8.0) * 0.22);
+        cloudCol = mix(cloudCol, vec3(0.13, 0.16, 0.26), uNight);  // clouds go dusky at night
+        c = mix(c, cloudCol, cl * mix(0.8, 0.35, uNight));
+        c += sunCol * (pow(s, 90.0) * 0.8 + pow(s, 8.0) * 0.22) * (1.0 - uNight);
+        if (uNight > 0.01) {
+          float up = smoothstep(0.03, 0.3, d.y);
+          c += vec3(0.92, 0.95, 1.0) * stars(d) * up * (1.0 - cl) * smoothstep(0.35, 0.9, uNight);
+          float m = max(dot(d, moonDir), 0.0);
+          float disc = smoothstep(0.99955, 0.9997, m);
+          vec3 moon = vec3(1.0, 0.97, 0.88) * disc * (0.85 + 0.15 * fbm(d.xy * 400.0));
+          c += (moon + vec3(0.45, 0.55, 0.8) * (pow(m, 300.0) * 0.35 + pow(m, 12.0) * 0.08)) * smoothstep(0.3, 0.8, uNight);
+        }
         gl_FragColor = vec4(c, 1.0);
         #include <colorspace_fragment>
       }`,
@@ -132,6 +156,7 @@ const motes = (() => {
   scene.add(pts);
   const base = pos.slice();
   return {
+    mat,
     update(t, center) {
       for (let i = 0; i < N; i++) {
         const s = seed[i];
@@ -148,6 +173,59 @@ const motes = (() => {
     },
   };
 })();
+
+// ---------- day and night ----------
+// The light fades from afternoon through a pink dusk into a moonlit night over CYCLE/2 seconds
+// of play, then back to day over the next CYCLE/2, and so on. Only the look and the ambience
+// change; the game plays the same.
+const CYCLE = 360;
+const clock = { t: 0 };   // seconds of play since the game (or a new game) started
+const dn = (day, dusk, night) => [new THREE.Color(day), new THREE.Color(dusk), new THREE.Color(night)];
+const PAL = {
+  fog: dn('#f5e6cf', '#e8aa98', '#121a34'),
+  top: dn('#a8d2f0', '#8c97cf', '#050a1e'),
+  sunCol: dn('#fff2cf', '#ffc39a', '#9fb4e8'),
+  hemiSky: dn('#d6ebff', '#c9b6e6', '#5a74b8'),
+  hemiGround: dn('#b5d69a', '#b39a8c', '#1a2433'),
+  light: dn('#ffe2b6', '#ffaa80', '#a9bdff'),
+  motes: dn('#fff3cf', '#ffe0a8', '#d8ff6a'),
+};
+const DUSK = 0.4; // where on the way to night the pink dusk peaks
+function pal(key, n, out) {
+  const [a, b, c] = PAL[key];
+  return n < DUSK ? out.copy(a).lerp(b, n / DUSK) : out.copy(b).lerp(c, (n - DUSK) / (1 - DUSK));
+}
+const lerp = (a, b, k) => a + (b - a) * k;
+const moonDir = sky.material.uniforms.moonDir.value;
+const lightDir = new THREE.Vector3();
+let night = 0;
+// 0 = day, 1 = night. Eased, so it lingers a little at full day and full night.
+function nightAt(t) {
+  const p = (t % CYCLE) / CYCLE;
+  const tri = p < 0.5 ? p * 2 : 2 - p * 2;
+  return tri * tri * (3 - 2 * tri);
+}
+function applyDayNight(n) {
+  night = n;
+  pal('fog', n, FOG);  // scene.fog.color and the background share this colour
+  scene.fog.color.copy(FOG);
+  const u = sky.material.uniforms;
+  u.horizon.value.copy(FOG);
+  pal('top', n, u.top.value);
+  pal('sunCol', n, u.sunCol.value);
+  u.uNight.value = n;
+  pal('hemiSky', n, hemi.color);
+  pal('hemiGround', n, hemi.groundColor);
+  hemi.intensity = lerp(1.9, 0.85, n);
+  pal('light', n, sun.color);
+  sun.intensity = n < 0.5 ? lerp(2.1, 1.0, n / 0.5) : lerp(1.0, 0.7, (n - 0.5) / 0.5);
+  lightDir.copy(sunDir).lerp(moonDir, smooth(Math.min(1, Math.max(0, (n - 0.3) / 0.5)))).normalize();
+  // pollen motes turn into fireflies
+  pal('motes', n, motes.mat.color);
+  motes.mat.size = lerp(0.09, 0.15, n);
+  document.documentElement.style.setProperty('--night', n.toFixed(3));
+  audio.setNight(n);
+}
 
 // Expanding rings on the water when the pig wades.
 const ripples = (() => {
@@ -396,6 +474,7 @@ document.getElementById('new-game').addEventListener('click', () => {
   hunt.reset();
   forest.collected.clear();
   hud.setTruffles(0);
+  clock.t = 0; // a new game starts in the afternoon again
   player.pos.set(0, terrainHeight(0, 0), 0);
   Object.assign(player, { heading: 0, speed: 0, turnVel: 0, pitch: 0 });
   knock = 0; knocked = false; camPull = 0;
@@ -584,6 +663,7 @@ function frame(now) {
     gameTime += dt;
     time.value = gameTime;
     sky.material.uniforms.uTime.value = gameTime;
+    if (started) clock.t += dt;
     update(dt);
   }
 
@@ -596,7 +676,8 @@ function frame(now) {
 
   sky.position.copy(camera.position);
   sun.target.position.copy(player.pos);
-  sun.position.copy(player.pos).addScaledVector(sunDir, 70);
+  applyDayNight(nightAt(clock.t));
+  sun.position.copy(player.pos).addScaledVector(lightDir, 70);
   motes.update(time.value, player.pos);
   updateSniffLabel();
   hud.drawMap(player, BARN_POS, forest, animals.mapIcons());
@@ -607,4 +688,4 @@ function frame(now) {
 requestAnimationFrame(frame);
 
 // For debugging in the console.
-window.__game = { player, forest, camera, renderer, scene, audio, hud, hunt, birds, animals, setPaused, sky, snortNow: () => { nextSnort = 0; } };
+window.__game = { player, forest, camera, renderer, scene, audio, hud, hunt, birds, animals, setPaused, sky, clock, snortNow: () => { nextSnort = 0; } };

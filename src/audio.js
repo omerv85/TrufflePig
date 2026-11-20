@@ -10,6 +10,7 @@ export class Ambience {
     this.muted = false;
     this.paused = false;
     this.volume = 0.9;
+    this.night = 0;
   }
 
   start() {
@@ -37,12 +38,22 @@ export class Ambience {
     this.birdBus.connect(this.master);
     this.birdBus.connect(this.reverb);
 
+    // Day and night layers cross-fade with the day/night cycle (setNight).
+    this.dayBus = ctx.createGain();
+    this.dayBus.connect(this.master);
+    this.nightBus = ctx.createGain();
+    this.nightBus.gain.value = 0;
+    this.nightBus.connect(this.master);
+    this.nightBus.connect(this.reverb);
+
     this.wind();
     this.brook();
     this.leaves();
     this.insects();
     this.cicadas();
     this.scheduleBird(1.2);
+    this.crickets();
+    this.scheduleNightCall(20);
     this.samplesReady = this.loadSamples();
 
     document.addEventListener('visibilitychange', () => {
@@ -244,7 +255,7 @@ export class Ambience {
       o.start();
       this.lfo(rand(3, 6), rand(1.5, 3), o.frequency);
     }
-    lp.connect(g).connect(pan).connect(this.master);
+    lp.connect(g).connect(pan).connect(this.dayBus);
     this.lfo(0.11, 0.01, g.gain);
     this.lfo(0.045, 0.7, pan.pan);
   }
@@ -262,7 +273,7 @@ export class Ambience {
     const swell = ctx.createGain();
     swell.gain.value = 0;
     const pan = ctx.createStereoPanner();
-    this.loop(this.white).connect(bp).connect(am).connect(swell).connect(pan).connect(this.master);
+    this.loop(this.white).connect(bp).connect(am).connect(swell).connect(pan).connect(this.dayBus);
     const cycle = () => {
       const t = ctx.currentTime, peak = rand(0.04, 0.09), up = rand(2, 4), hold = rand(2, 5), down = rand(3, 5);
       pan.pan.setValueAtTime(rand(-0.8, 0.8), t);
@@ -275,10 +286,132 @@ export class Ambience {
     setTimeout(cycle, 4000);
   }
 
+  // ---------- night ----------
+  // 0 = day, 1 = night: day insects and birds fade out, crickets, owls and distant howls fade in.
+  setNight(n) {
+    if (!this.ctx || Math.abs(n - this.night) < 0.005) return;
+    this.night = n;
+    const ss = (a, b, x) => { const k = Math.min(1, Math.max(0, (x - a) / (b - a))); return k * k * (3 - 2 * k); };
+    const t = this.ctx.currentTime;
+    this.dayBus.gain.setTargetAtTime(1 - ss(0.3, 0.75, n), t, 0.5);
+    this.nightBus.gain.setTargetAtTime(ss(0.4, 0.85, n), t, 0.5);
+  }
+
+  // Crickets: a few chirping voices, each a high tone pulsed in quick bursts, over a soft
+  // shimmer of distant ones.
+  crickets() {
+    const ctx = this.ctx;
+    for (const [f, rate, panV, vol] of [[4300, 1.6, -0.6, 0.016], [4650, 2.1, 0.55, 0.012], [3950, 1.25, 0.1, 0.009]]) {
+      const o = ctx.createOscillator();
+      o.frequency.value = f;
+      const pulse = ctx.createGain();     // the fast wing strokes
+      pulse.gain.value = 0.5;
+      this.lfo(rand(26, 32), 0.5, pulse.gain);
+      const burst = ctx.createGain();     // chirp, pause, chirp
+      burst.gain.value = 0;
+      const shape = ctx.createWaveShaper();  // turns the slow sine into short on/off bursts
+      const curve = new Float32Array(256);
+      for (let i = 0; i < 256; i++) curve[i] = Math.max(0, (i / 255) * 2 - 1) ** 3 * 1.6;
+      shape.curve = curve;
+      const slow = ctx.createOscillator();
+      slow.frequency.value = rate;
+      slow.connect(shape).connect(burst.gain);
+      slow.start();
+      const g = ctx.createGain();
+      g.gain.value = vol;
+      const pan = ctx.createStereoPanner();
+      pan.pan.value = panV;
+      o.connect(pulse).connect(burst).connect(g).connect(pan).connect(this.nightBus);
+      o.start();
+    }
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = 5200;
+    bp.Q.value = 9;
+    const am = ctx.createGain();
+    am.gain.value = 0.5;
+    this.lfo(44, 0.5, am.gain);
+    const g = ctx.createGain();
+    g.gain.value = 0.05;
+    this.lfo(0.07, 0.02, g.gain);
+    this.loop(this.white).connect(bp).connect(am).connect(g).connect(this.nightBus);
+  }
+
+  // Now and then at night: an owl hooting, or (rarer) wolves howling far away.
+  scheduleNightCall(delay) {
+    setTimeout(() => {
+      if (this.ctx.state === 'running' && this.night > 0.6) {
+        if (Math.random() < 0.72) this.owl(); else this.distantHowl();
+      }
+      this.scheduleNightCall(rand(7, 16));
+    }, delay * 1000);
+  }
+
+  // A tawny owl: "hoo ... hoo-hoo-hoooo", soft sine notes with a little breath, in the reverb.
+  owl() {
+    const ctx = this.ctx, t0 = ctx.currentTime + 0.05;
+    const base = rand(330, 420), panV = rand(-0.85, 0.85), vol = rand(0.05, 0.1);
+    const pan = ctx.createStereoPanner();
+    pan.pan.value = panV;
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 1400;
+    lp.connect(pan).connect(this.nightBus);
+    const hoot = (t, dur, f, v) => {
+      const o = ctx.createOscillator();
+      o.type = 'sine';
+      o.frequency.setValueAtTime(f * 1.04, t);
+      o.frequency.linearRampToValueAtTime(f, t + 0.08);
+      o.frequency.linearRampToValueAtTime(f * 0.95, t + dur);
+      const vib = ctx.createOscillator();
+      vib.frequency.value = 6;
+      const vg = ctx.createGain();
+      vg.gain.value = f * 0.012;
+      vib.connect(vg).connect(o.frequency);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0, t);
+      g.gain.linearRampToValueAtTime(v, t + 0.06);
+      g.gain.setValueAtTime(v, t + dur * 0.6);
+      g.gain.linearRampToValueAtTime(0, t + dur);
+      o.connect(g).connect(lp);
+      o.start(t); vib.start(t);
+      o.stop(t + dur + 0.05); vib.stop(t + dur + 0.05);
+    };
+    let t = t0;
+    hoot(t, 0.55, base, vol);
+    if (Math.random() < 0.8) {
+      t += rand(1.6, 2.4);
+      hoot(t, 0.18, base * 1.02, vol * 0.7); t += 0.3;
+      hoot(t, 0.16, base * 1.03, vol * 0.6); t += 0.28;
+      hoot(t, 1.1, base * 1.05, vol * 0.9);
+    }
+    setTimeout(() => { lp.disconnect(); pan.disconnect(); }, (t - t0 + 2) * 1000);
+  }
+
+  // Wolves howling somewhere far off: the howl recording, quiet, slower and muffled. It means no
+  // danger; the prowling wolf's own howl (louder) still plays as it comes into minimap range.
+  distantHowl() {
+    const s = this.samples?.howl;
+    if (!s) return;
+    const ctx = this.ctx;
+    const src = ctx.createBufferSource();
+    src.buffer = s.buffer;
+    src.playbackRate.value = rand(0.82, 0.92);
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 1100;
+    const g = ctx.createGain();
+    g.gain.value = s.gain * rand(0.25, 0.4);
+    const pan = ctx.createStereoPanner();
+    pan.pan.value = rand(-0.8, 0.8);
+    src.connect(lp).connect(g).connect(pan).connect(this.nightBus);
+    src.start();
+  }
+
   // ---------- birds ----------
   scheduleBird(delay) {
     setTimeout(() => {
-      if (this.ctx.state === 'running') {
+      if (this.ctx.state === 'running' && Math.random() > this.night * 1.15) {  // birds fall silent at night
         this.bird();
         if (Math.random() < 0.35) setTimeout(() => this.bird(this.lastKind, this.lastPan), rand(700, 1500));
       }

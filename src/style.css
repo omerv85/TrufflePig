@@ -38,6 +38,14 @@ html, body {
     radial-gradient(120% 90% at 50% 40%, rgba(255, 240, 210, 0) 55%, rgba(214, 160, 120, 0.28) 100%),
     linear-gradient(180deg, rgba(255, 226, 180, 0.12), rgba(255, 255, 255, 0) 40%);
 }
+/* at night the warm vignette gives way to a deep blue one (--night 0..1, set by the day/night cycle) */
+#vignette::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  opacity: var(--night, 0);
+  background: radial-gradient(120% 90% at 50% 45%, rgba(10, 16, 40, 0) 50%, rgba(8, 12, 32, 0.5) 100%);
+}
 
 #touch {
   position: fixed;
