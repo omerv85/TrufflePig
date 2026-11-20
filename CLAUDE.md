@@ -151,7 +151,9 @@ World and look
 - Pastel afternoon: pastel blue sky fading to a peach haze, warm low sun from the side (`sunDir`) so both the barn's
   front and the pig's back are lit, soft shadows, fog, floating pollen, warm vignette. Low-poly flat-shaded props.
 - Light white feather (cirrus) clouds, drawn in the sky shader (`cirrus()`): long thin streaks with fine fibres on a
-  flat cloud layer, fading into the haze near the horizon, drifting very slowly with game time.
+  flat cloud layer, fading into the haze near the horizon, drifting very slowly with game time. They disperse
+  through dusk (streaks thin and break into strands, gone at full night, owner's request) and gather again at
+  morning (`k` in `cirrus()`).
 - The barn (pastel red, cream roof, white X doors) stands just behind the spawn point, doors facing it, in a tree-free
   meadow (`inClearing`).
 - Tree leaves never hang lower than `LEAF_CLEAR` 2 m above the highest ground under the canopy (the pig is 1.44 m

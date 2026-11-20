@@ -85,8 +85,12 @@ const sky = new THREE.Mesh(
         p += 0.6 * vec2(fbm(p * 0.5), fbm(p * 0.5 + 7.3)) ;      // curl the streaks a little
         float body = fbm(vec2(p.x * 0.35, p.y * 1.4));           // stretched: long, thin bands
         float fibres = fbm(vec2(p.x * 0.8, p.y * 11.0));         // hair-like strands along them
-        float c = smoothstep(0.4, 0.68, body) * (0.4 + 0.6 * fibres);
-        return c * smoothstep(0.015, 0.12, d.y);                   // fade into the haze near the horizon
+        // At dusk the clouds disperse: the streaks thin and break into strands, gone by full night,
+        // and gather again as morning returns.
+        float k = smoothstep(0.1, 0.9, uNight);
+        float c = smoothstep(0.4 + 0.2 * k, 0.68 + 0.2 * k, body) * (0.4 + 0.6 * fibres);
+        c *= smoothstep(0.3 * k, 0.3 * k + 0.3, fibres) * (1.0 - k);
+        return c * smoothstep(0.015, 0.12, d.y);                 // fade into the haze near the horizon
       }
       // Night sky: twinkling stars of a few sizes, scattered on a grid in sky angles.
       float stars(vec3 d) {
