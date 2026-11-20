@@ -86,7 +86,7 @@ export function createPig() {
 
   // speedNorm 0..1, gait phase, turn velocity, snort 0..1 (head lift), sniff 0..1 (nose wiggle),
   // excite 0..1 (truffle nearby), dig 0..1 with digPhase (pawing at the ground)
-  function animate(dt, { speedNorm, gait, turn, snort, sniff, excite = 0, dig = 0, digPhase = 0 }) {
+  function animate(dt, { speedNorm, gait, turn, snort, sniff, excite = 0, look = 0, dig = 0, digPhase = 0 }) {
     breath += dt;
     const bob = Math.abs(Math.sin(gait)) * 0.035 * speedNorm;
     const breathe = Math.sin(breath * 2.2) * 0.008;
@@ -107,7 +107,9 @@ export function createPig() {
     neck.rotation.x = snort * 0.55 + Math.sin(gait * 2) * 0.02 * speedNorm
       + excite * 0.12 + Math.sin(breath * 9) * excite * 0.05      // nose up, sniffing the air
       - dig * 0.8 + Math.sin(digPhase * 2) * 0.1 * dig;            // head down into the dirt
-    neck.rotation.y = -turn * 0.12 + Math.sin(breath * 2.3) * excite * 0.12 * (1 - dig);
+    // turns towards the nearest truffle's scent (look: bearing in radians, + = left), up to ~23°
+    const lookYaw = Math.max(-0.4, Math.min(0.4, look * 0.6));
+    neck.rotation.y = -turn * 0.12 + (lookYaw + Math.sin(breath * 2.3) * excite * 0.06) * (1 - dig);
 
     const wiggle = excite * 0.8 * (0.5 + 0.5 * Math.sin(breath * 24));
     const nose = Math.max(sniff, wiggle, dig * (0.5 + 0.5 * Math.sin(digPhase * 1.5)));

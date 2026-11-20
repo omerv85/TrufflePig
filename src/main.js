@@ -624,6 +624,7 @@ function update(dt) {
     snort: sn.lift,
     sniff: Math.max(sn.sniff, hunt.smell),
     excite: hunt.excite,
+    look: hunt.look * hunt.lookAmt,
     dig: hunt.digAmount,
     digPhase: hunt.digPhase,
   });

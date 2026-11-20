@@ -128,6 +128,8 @@ export class TruffleHunt {
     this.cloudT = 0.5;
     this.strokeT = 0;
     this.hinted = false;     // the girl's hint has played this game
+    this.look = 0;           // nearest truffle's bearing relative to the pig's heading (radians, + = left)
+    this.lookAmt = 0;        // 0..1, how much the head turns towards it
 
     // The truffle that pops out of the ground
     const g = new THREE.IcosahedronGeometry(0.17, 2);
@@ -169,6 +171,8 @@ export class TruffleHunt {
     this.squealT = 1.5;
     this.prizeT = -1;
     this.hinted = false;
+    this.look = 0;
+    this.lookAmt = 0;
     this.prize.visible = false;
     for (const h of this.holes) h.visible = false;
     for (const p of this.fx.p) p.alive = false;
@@ -191,6 +195,16 @@ export class TruffleHunt {
     const closeness = nearest ? Math.min(1, Math.max(0, 1 - (nd - 1) / (SCENT_RANGE - 1))) : 0;
     const rawExcite = Math.pow(closeness, 1.6);
     this.excite += (rawExcite - this.excite) * (1 - Math.exp(-3 * dt));
+
+    // Where the nose points: the nearest truffle's bearing relative to the pig's heading
+    // (+ = to the left), smoothed. `lookAmt` fades in while there's a scent to follow.
+    const k = 1 - Math.exp(-4 * dt);
+    if (nearest) {
+      const want = Math.atan2(-(nearest.x - px), -(nearest.z - pz)) - player.heading;
+      const rel = Math.atan2(Math.sin(want), Math.cos(want));
+      this.look += (rel - this.look) * k;
+    }
+    this.lookAmt += ((nearest && !this.digging ? 1 : 0) - this.lookAmt) * k;
 
     if (this.digging) this.updateDig(dt, player);
     else if (nearest) {
