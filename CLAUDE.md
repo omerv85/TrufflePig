@@ -241,7 +241,7 @@ Birds
 
 Animals (the owner's design)
 - All animals use the same algorithm. At most one wolf, one bear and one docile animal (deer, goat, squirrel or moose,
-  picked at random) at a time; a wolf and a bear can be around together. They keep apart: a new animal never appears
+  picked at random, the squirrel half the time) at a time; a wolf and a bear can be around together. They keep apart: a new animal never appears
   within `MIN_SEP` 45 m of another, and walking animals steer away from each other inside `KEEP_APART` 35 m.
 - Bear: same as the wolf, bigger and brown, first after 75 s (then 35-70 s after the last left). **"bear growl"** when it
   comes into map range, **"growling bear"** while it stares and as it charges. Bear head on the map. "The bear got
@@ -249,7 +249,9 @@ Animals (the owner's design)
 - Docile animals: first after 12 s (then 8-20 s after the last one left), appear 75-90 m away (squirrel 55-70 m),
   walk across the pig's path like the wolf, stop and stare (head up, ears twitching; the squirrel sits up) when the
   pig comes close, and flee when it gets too close (deer 24/12 m, moose 24/12, goat 16/8, squirrel 10/5); the deer
-  raises its white tail as it bolts. They vanish once 85 m away. Harmless, silent, and not on the minimap.
+  raises its white tail as it bolts. The squirrel instead dashes to the nearest tree within 22 m (preferring ones away
+  from the pig), scurries up the trunk nose-up and vanishes into the leaves (tree colliders carry `leaf`, the canopy
+  height); if it gets blocked on the way it just bolts like the others. They vanish once 85 m away. Harmless, silent, and not on the minimap.
 - Wolf: only one at a time. The first comes after `FIRST_DELAY` 35 s of play, later ones 25-50 s after the last one
   left. It appears 86-96 m away (lost in the haze; its eyes are fogged too), ahead and off to one side, and walks slowly (1.1 m/s) **mostly perpendicular to the
   pig's heading** (a gentle wobble), so it crosses in front of the pig. It keeps 40 m from the barn and leaves for

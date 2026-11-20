@@ -6,7 +6,8 @@ import { createCreature } from './creatures.js';
 // and stare. Closer still:
 //  - dangerous ones (wolf, bear) charge, leap over the pig, and the game is over. They show on
 //    the minimap and call out (howl / growl) as they come into map range, and growl while staring.
-//  - docile ones (deer, goat, squirrel, moose) turn and flee. Silent, and not on the map.
+//  - docile ones (deer, goat, moose) turn and flee. The squirrel dashes to the nearest tree,
+//    scurries up the trunk into the leaves and is gone. Silent, and not on the map.
 // At most one wolf, one bear and one docile animal are around at a time, and they keep apart.
 
 // ---------- tuning ----------
@@ -14,6 +15,8 @@ const MIN_SEP = 45;        // a new animal never appears this close to another o
 const KEEP_APART = 35;     // walking animals steer away from each other inside this
 const LEAP_START = 3.4;    // metres from the pig where a charging predator leaps
 const LEAP_TIME = 0.62;
+const CLIMB_SPEED = 2.6;   // m/s up a trunk (squirrel)
+const TREE_SEARCH = 22;    // a squirrel looks for a tree this close
 
 // map: sound as it comes into minimap range. stare: growl slices while staring (end = last usable
 // second of the recording). charge: the snarl as it charges.
@@ -39,14 +42,15 @@ export const SPECIES = {
   deer: { size: 1.0, walk: 1.2, run: 8, alert: 24, close: 12, calm: 34, spawn: [75, 90], barnKeep: 20 },
   goat: { size: 1.0, walk: 0.9, run: 6.5, alert: 16, close: 8, calm: 26, spawn: [75, 90], barnKeep: 20 },
   moose: { size: 1.1, walk: 1.0, run: 6.5, alert: 24, close: 12, calm: 34, spawn: [75, 90], barnKeep: 20 },
-  squirrel: { size: 1.8, walk: 0.8, run: 5, alert: 10, close: 5, calm: 18, spawn: [55, 70], barnKeep: 15, hop: true },
+  squirrel: { size: 1.8, walk: 0.8, run: 5, alert: 10, close: 5, calm: 18, spawn: [55, 70], barnKeep: 15, hop: true, climbs: true },
 };
 
 // One wolf, one bear, one docile animal at most. first: seconds of play before the first one.
 const SLOTS = [
   { kinds: ['wolf'], first: 35, respawn: [25, 50] },
   { kinds: ['bear'], first: 75, respawn: [35, 70] },
-  { kinds: ['deer', 'goat', 'squirrel', 'moose'], first: 12, respawn: [8, 20] },
+  // squirrels listed three times: half of the docile animals are squirrels
+  { kinds: ['deer', 'goat', 'squirrel', 'squirrel', 'squirrel', 'moose'], first: 12, respawn: [8, 20] },
 ];
 
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -68,7 +72,7 @@ class Creature {
     this.gait = 0;
     this.snarl = 0;                // 0..1 snarl pose (predators)
     this.look = 0;                 // 0..1 alert head-up pose (docile)
-    this.state = 'walk';           // walk | alert | windup | run | leap | done | flee
+    this.state = 'walk';           // walk | alert | windup | run | leap | done | flee | totree | climb
     this.stateT = 0;
     this.inMap = false;
     this.howlCool = 0;
@@ -129,7 +133,7 @@ class Creature {
           this.updateGrowl(dt, player, dist);
         } else {
           look = 1;
-          if (dist < sp.close) { this.setState('flee'); break; }
+          if (dist < sp.close) { this.escape(player); break; }
         }
         if (dist > sp.calm && this.stateT > 2) {
           // wander off, away from the pig
@@ -143,6 +147,31 @@ class Creature {
         this.turnTo(toPig + Math.PI, 5, dt);
         targetSpeed = sp.run;
         if (dist > 85 || this.stateT > 15) { this.gone = true; return; }
+        break;
+      case 'totree': { // squirrel: dash to the trunk
+        const T = this.tree, tx = T.x - this.pos.x, tz = T.z - this.pos.z;
+        const td = Math.hypot(tx, tz);
+        this.turnTo(Math.atan2(tx, tz), 12, dt);
+        targetSpeed = sp.run;
+        if (td < T.r + 0.3) {
+          // at the trunk: face it, feet on the bark, and start climbing
+          this.yaw = Math.atan2(tx, tz);
+          this.pos.x = T.x - (tx / td) * (T.r + 0.04);
+          this.pos.z = T.z - (tz / td) * (T.r + 0.04);
+          this.climbY = this.pos.y;
+          this.setState('climb');
+        } else if ((this.checkT -= dt) <= 0) {
+          // blocked (by a rock or the barn), or taking too long: just bolt instead
+          if (td > this.lastTd - 1 || this.stateT > 8) this.setState('flee');
+          this.lastTd = td; this.checkT = 0.6;
+        }
+        break;
+      }
+      case 'climb': // up the trunk into the leaves, then gone
+        this.climbY += CLIMB_SPEED * Math.min(1, this.stateT * 4) * dt;
+        this.pos.y = this.climbY;
+        this.speed = CLIMB_SPEED; // keeps the legs scrabbling
+        if (this.climbY > this.tree.leaf) { this.gone = true; return; }
         break;
       case 'windup': // a brief crouch before the lunge (and time for the pig to turn and see it)
         this.turnTo(toPig, 8, dt);
@@ -179,17 +208,41 @@ class Creature {
     }
     if (this.state !== 'alert') this.stopGrowl(0.35);
 
-    this.speed += (targetSpeed - this.speed) * (1 - Math.exp(-6 * dt));
-    if (this.state !== 'leap') {
+    if (this.state !== 'climb') this.speed += (targetSpeed - this.speed) * (1 - Math.exp(-6 * dt));
+    if (this.state !== 'leap' && this.state !== 'climb') {
       this.pos.x += Math.sin(this.yaw) * this.speed * dt;
       this.pos.z += Math.cos(this.yaw) * this.speed * dt;
-      if (this.state === 'walk' || this.state === 'flee') mgr.forest.collide(this.pos, 0.45 * sp.size);
+      // (a squirrel near its tree skips collisions so it can reach the bark)
+      const nearTree = this.state === 'totree' && Math.hypot(this.tree.x - this.pos.x, this.tree.z - this.pos.z) < this.tree.r + 1.5;
+      if ((this.state === 'walk' || this.state === 'flee' || this.state === 'totree') && !nearTree) mgr.forest.collide(this.pos, 0.45 * sp.size);
       this.pos.y = terrainHeight(this.pos.x, this.pos.z);
     }
     const k = 1 - Math.exp(-8 * dt);
     this.snarl += (snarl - this.snarl) * k;
     this.look += (look - this.look) * k;
     this.animate(dt);
+  }
+
+  // Docile animals flee; a squirrel heads for the nearest tree that isn't toward the pig.
+  escape(player) {
+    if (this.sp.climbs) {
+      let best = null, bestScore = Infinity;
+      for (const c of this.mgr.forest.nearbyColliders(this.pos.x, this.pos.z, TREE_SEARCH)) {
+        if (c.leaf === undefined) continue;
+        const d = Math.hypot(c.x - this.pos.x, c.z - this.pos.z);
+        if (d > TREE_SEARCH) continue;
+        const dp = Math.hypot(c.x - player.pos.x, c.z - player.pos.z);
+        if (dp < 2.5) continue;
+        const score = d - 0.5 * dp;
+        if (score < bestScore) { bestScore = score; best = c; }
+      }
+      if (best) {
+        this.tree = best; this.lastTd = Infinity; this.checkT = 0.6;
+        this.setState('totree');
+        return;
+      }
+    }
+    this.setState('flee');
   }
 
   turnTo(want, rate, dt) {
@@ -226,7 +279,8 @@ class Creature {
 
   animate(dt) {
     const m = this.m, sp = this.sp, sn = this.snarl, look = this.look;
-    const running = this.state === 'run' || this.state === 'flee', leaping = this.state === 'leap';
+    const climbing = this.state === 'climb';
+    const running = this.state === 'run' || this.state === 'flee' || this.state === 'totree' || climbing, leaping = this.state === 'leap';
     const hipW = m.hip * sp.size;
     this.gait += (this.speed * dt * (running ? 1.7 : 3.2)) / hipW;
     const g = this.gait;
@@ -237,6 +291,7 @@ class Creature {
     // pitch along the slope (and along the arc of the leap)
     let pitch;
     if (leaping) pitch = -Math.cos(Math.min(1, this.stateT / LEAP_TIME) * Math.PI) * 0.45;
+    else if (climbing) pitch = -Math.PI / 2 * Math.min(1, this.stateT * 6); // upright on the trunk, nose up
     else {
       const fx = Math.sin(this.yaw), fz = Math.cos(this.yaw), L = Math.max(0.3, hipW * 0.7);
       const hF = terrainHeight(this.pos.x + fx * L, this.pos.z + fz * L);

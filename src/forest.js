@@ -169,7 +169,7 @@ function roundTree(b, x, y, z, rng, colliders, wx, wz) {
     _tmpC.copy(col).offsetHSL((rng() - 0.5) * 0.03, 0, (rng() - 0.5) * 0.06);
     b.add(T.blob, mat(x + Math.cos(a) * d, cy + (rng() - 0.3) * R * 0.6, z + Math.sin(a) * d, r, r * 0.9, r, rng() * 6), _tmpC, rng, 0.2, 0.45);
   }
-  colliders.push({ x: wx, z: wz, r: 0.3 * s + 0.05 });
+  colliders.push({ x: wx, z: wz, r: 0.3 * s + 0.05, leaf: cy }); // leaf: canopy centre height (squirrels climb to it)
 }
 
 function pineTree(b, x, y, z, rng, colliders, wx, wz) {
@@ -181,7 +181,7 @@ function pineTree(b, x, y, z, rng, colliders, wx, wz) {
   for (const [r, h, oy] of tiers) {
     b.add(T.cone, mat(x, y + oy * sc + lift, z, r * sc, h * sc, r * sc, rng() * 6), col, rng, 0.05, 0.3);
   }
-  colliders.push({ x: wx, z: wz, r: 0.3 * sc });
+  colliders.push({ x: wx, z: wz, r: 0.3 * sc, leaf: y + 2.2 * sc + lift });
 }
 
 function birchTree(b, x, y, z, rng, colliders, wx, wz) {
@@ -193,7 +193,7 @@ function birchTree(b, x, y, z, rng, colliders, wx, wz) {
     const a = rng() * Math.PI * 2, d = 0.3 + rng() * 0.5, r = 0.9 + rng() * 0.5;
     b.add(T.blob, mat(x + Math.cos(a) * d, y + h - 0.4 + i * 0.6, z + Math.sin(a) * d, r, r, r, rng() * 6), col, rng, 0.2, 0.5);
   }
-  colliders.push({ x: wx, z: wz, r: 0.2 });
+  colliders.push({ x: wx, z: wz, r: 0.2, leaf: y + h + 0.2 });
 }
 
 function bush(b, x, y, z, rng) {
