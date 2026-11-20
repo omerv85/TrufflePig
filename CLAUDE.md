@@ -189,6 +189,10 @@ HUD
   in range; when out of range the barn sits **on the rim line itself** pointing home, with the distance ("94 m")
   just inside next to it. No distance label when the barn is in range.
 - Top right: truffle counter (truffle icon + number, bounces on change), then the pause button.
+- Sky dial in the top row, left of the truffle counter (owner picked it from four mockups; no numbers): a half-moon window over a
+  little green treeline (`#sky-dial` in `index.html`, `updateDial` in `main.js`). A disc behind it turns once per
+  8 min cycle: the sun on top at the start, setting to the right through dusk, the crescent moon and stars on top
+  mid-night, then the sun rising again from the left. The window shows the sky colour; the treeline darkens at night.
 - No share button during play (**moved into the pause menu and the game-over screen at the owner's request**). It
   opens `wa.me` with "I found N truffles in the forest in TrufflePig 🐷 / How many can you find? <game link>"; from
   the game-over screen "I found N truffles in TrufflePig 🐷 before a wolf got me 🐺 / ..." or "... before a bear got me

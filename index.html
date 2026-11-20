@@ -38,6 +38,29 @@
       <canvas id="minimap" aria-label="Minimap"></canvas>
     </div>
     <div id="right">
+      <!-- Sky dial: a half-moon window over a little treeline; the disc behind it turns with the
+           day and night cycle, carrying the sun down out of view and the moon and stars up. -->
+      <svg id="sky-dial" viewBox="0 0 84 46" aria-hidden="true">
+        <defs>
+          <clipPath id="dial-win"><path d="M12 38 A30 30 0 0 1 72 38 Z" /></clipPath>
+        </defs>
+        <g clip-path="url(#dial-win)">
+          <rect id="dial-sky" x="10" y="6" width="64" height="34" fill="#a8d2f0" />
+          <g id="dial-disc">
+            <circle cx="42" cy="18" r="7.5" fill="#ffd36b" />
+            <circle cx="42" cy="18" r="10" fill="#ffe7a3" opacity="0.45" />
+            <circle cx="42" cy="58" r="6.5" fill="#f6f1dc" />
+            <circle id="dial-bite" cx="45.5" cy="55.5" r="5.5" fill="#a8d2f0" />
+            <circle cx="29" cy="60" r="1.1" fill="#fff" />
+            <circle cx="55" cy="63" r="1" fill="#fff" />
+            <circle cx="35" cy="68" r="0.9" fill="#fff" />
+            <circle cx="51" cy="51" r="0.8" fill="#fff" />
+          </g>
+        </g>
+        <path d="M12 38 A30 30 0 0 1 72 38" fill="none" stroke="#fff" stroke-width="3" />
+        <path d="M20 38 l4.5 -8 l4.5 8 Z M56 38 l5.5 -10 l5.5 10 Z M48 38 l3.5 -6 l3.5 6 Z" class="dial-ground" fill="#7fae7a" />
+        <path d="M6 38.5 H78" class="dial-ground" stroke="#7fae7a" stroke-width="5" stroke-linecap="round" />
+      </svg>
       <div id="counter" aria-label="Truffles collected">
         <svg viewBox="0 0 32 32" class="truffle-icon" aria-hidden="true">
           <circle cx="16" cy="17" r="11" fill="#4a3530" />
@@ -65,7 +88,7 @@
       <h1>TrufflePig</h1>
       <p>Follow the truffle smell!</p>
       <button id="play">Tap to start</button>
-      <div id="version">v0.13</div>
+      <div id="version">v0.14</div>
     </div>
   </div>
 

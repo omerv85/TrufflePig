@@ -232,6 +232,29 @@ function applyDayNight(n) {
   audio.setNight(n);
 }
 
+// The HUD sky dial: the disc turns once per cycle (sun on top at the start, setting to the right
+// through dusk, the moon on top in the middle of the night), and its window shows the sky colour.
+const dial = {
+  disc: document.getElementById('dial-disc'),
+  sky: document.getElementById('dial-sky'),
+  bite: document.getElementById('dial-bite'),
+  ground: document.querySelectorAll('.dial-ground'),
+  col: new THREE.Color(), key: '',
+};
+const DIAL_GROUND = [new THREE.Color('#7fae7a'), new THREE.Color('#5b8270')];
+function updateDial(t, n) {
+  const angle = ((t % CYCLE) / CYCLE) * 360;
+  const c = dial.col.copy(sky.material.uniforms.top.value).lerp(FOG, 0.35).getStyle();
+  const g = DIAL_GROUND[0].clone().lerp(DIAL_GROUND[1], n).getStyle();
+  const key = angle.toFixed(1) + c + g;
+  if (key === dial.key) return;  // only touch the DOM when something visibly changed
+  dial.key = key;
+  dial.disc.setAttribute('transform', `rotate(${angle.toFixed(2)} 42 38)`);
+  dial.sky.setAttribute('fill', c);
+  dial.bite.setAttribute('fill', c);  // the moon's crescent is cut by the sky colour
+  for (const el of dial.ground) el.setAttribute(el.getAttribute('fill') ? 'fill' : 'stroke', g);
+}
+
 // Expanding rings on the water when the pig wades.
 const ripples = (() => {
   const geo = new THREE.RingGeometry(0.42, 0.5, 32).rotateX(-Math.PI / 2);
@@ -683,6 +706,7 @@ function frame(now) {
   sky.position.copy(camera.position);
   sun.target.position.copy(player.pos);
   applyDayNight(nightAt(clock.t));
+  updateDial(clock.t, night);
   sun.position.copy(player.pos).addScaledVector(lightDir, 70);
   motes.update(time.value, player.pos);
   updateSniffLabel();
