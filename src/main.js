@@ -430,8 +430,8 @@ fsBtn.addEventListener('click', enterFullscreen);
 // on desktop) with a message saying how many truffles were found and inviting the friend to beat it.
 const GAME_URL = 'https://trufflepig.o-vertman.workers.dev/';
 const plural = (n) => `${n} truffle${n === 1 ? '' : 's'}`;
-const KILLER = { wolf: ['a wolf got me', '🐺'], bear: ['a bear got me', '🐻'], witch: ['a witch turned me into a toad', '🐸'] };
-// caughtBy: what ended the game ('wolf' / 'bear' / 'witch'), or null from the pause menu.
+const KILLER = { wolf: ['a wolf got me', '🐺'], bear: ['a bear got me', '🐻'], witch: ['a witch turned me into a toad', '🐸'], troll: ['a troll clobbered me', '🧌'] };
+// caughtBy: what ended the game ('wolf' / 'bear' / 'witch' / 'troll'), or null from the pause menu.
 function shareText(n, caughtBy) {
   const k = KILLER[caughtBy];
   const found = k
@@ -469,18 +469,25 @@ const hunt = new TruffleHunt({
 // ---------- birds on the forest floor ----------
 const birds = new Birds({ scene, forest, audio });
 
-// ---------- forest animals: wolf, bear and witch (danger, and the way the game ends), deer, goat, squirrel, moose ----------
+// ---------- forest animals: wolf, bear, witch and troll (danger, and the way the game ends), deer, goat, squirrel, moose ----------
 const flashEl = document.getElementById('flash');
 const gameOverEl = document.getElementById('gameover');
-let knock = 0;      // 0..1 the pig bowled over by a wolf or bear
+let knock = 0;      // 0..1 the pig bowled over by a wolf, bear or troll
 let knocked = false;
+const fling = { x: 0, z: 0 }; // the troll's club sends the pig tumbling: velocity, m/s
 let camPull = 0;    // 0..1 camera pulls back to show the attack
 const curse = new Curse({ scene, audio }); // the witch's spell: smoke, and a toad where the pig was
 let toadCam = 0;    // 0..1 camera tips down to watch the toad
 const animals = new Animals({
   scene, forest, audio, barn: BARN_POS, mapRange: MAP_RANGE,
-  onPounce: () => {
+  onPounce: (kind) => {
     knocked = true;
+    const a = animals.attacker;
+    if (kind === 'troll' && a) {
+      audio.thud();
+      const dx = player.pos.x - a.pos.x, dz = player.pos.z - a.pos.z, d = Math.hypot(dx, dz) || 1;
+      fling.x = (dx / d) * 6; fling.z = (dz / d) * 6;
+    }
     flashEl.classList.remove('hit');
     void flashEl.offsetWidth;
     flashEl.classList.add('hit');
@@ -516,6 +523,7 @@ document.getElementById('new-game').addEventListener('click', () => {
   player.pos.set(0, terrainHeight(0, 0), 0);
   Object.assign(player, { heading: 0, speed: 0, turnVel: 0, pitch: 0 });
   knock = 0; knocked = false; camPull = 0; digCam = 0; digCamOn = false;
+  fling.x = fling.z = 0;
   curse.reset();
   toadCam = 0;
   pig.root.visible = true;
@@ -734,6 +742,14 @@ function update(dt) {
   audio.setWater(1 - smooth(Math.min(1, Math.max(0, (streamDist(player.pos.x, player.pos.z) - 2) / 26))));
 
   if (knocked) knock = Math.min(1, knock + dt / 0.35);
+  if (fling.x || fling.z) { // tumbling away from the club, slowing to a stop
+    player.pos.x += fling.x * dt; player.pos.z += fling.z * dt;
+    forest.collide(player.pos, PIG_RADIUS);
+    player.pos.y = terrainHeight(player.pos.x, player.pos.z);
+    const k = Math.exp(-7 * dt);
+    fling.x *= k; fling.z *= k;
+    if (Math.hypot(fling.x, fling.z) < 0.05) fling.x = fling.z = 0;
+  }
   pig.root.position.copy(player.pos);
   pig.root.rotation.y = player.heading;
   pig.root.rotation.x = player.pitch;

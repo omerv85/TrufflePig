@@ -59,7 +59,7 @@ export class Hud {
   }
 
   // Draws the map rotated so the pig always faces up.
-  // icons: dangerous animals, [{ x, z, kind: 'wolf' | 'bear' | 'witch', angry }].
+  // icons: dangerous animals, [{ x, z, kind: 'wolf' | 'bear' | 'witch' | 'troll', angry }].
   drawMap(player, barn, forest, icons = []) {
     // Padding around the map circle leaves room for the barn icon sitting on the rim.
     const PAD = 11;
@@ -155,7 +155,7 @@ export class Hud {
 
     drawBarn(g, bx, by, onRim ? 0.9 : 1);
 
-    // wolves, bears and witches, only once they're inside the map
+    // wolves, bears, witches and trolls, only once they're inside the map
     for (const a of icons) {
       let [wx, wy] = toMap(a.x, a.z);
       const wd = Math.hypot(wx - c, wy - c);
@@ -164,7 +164,7 @@ export class Hud {
         const maxD = R - 13;
         if (wd > maxD) { wx = c + ((wx - c) / wd) * maxD; wy = c + ((wy - c) / wd) * maxD; }
         const pulse = a.angry ? 1 + 0.15 * Math.sin(performance.now() / 90) : 1;
-        ({ bear: drawBear, witch: drawWitch }[a.kind] || drawWolf)(g, wx, wy, pulse, a.angry);
+        ({ bear: drawBear, witch: drawWitch, troll: drawTroll }[a.kind] || drawWolf)(g, wx, wy, pulse, a.angry);
       }
     }
 
@@ -263,6 +263,78 @@ function drawWolf(g, x, y, k, angry) {
   for (const s of [-1, 1]) {
     g.beginPath();
     g.ellipse(s * 4, -1.5, 1.8, 1.1, s * 0.4, 0, Math.PI * 2);
+    g.fill();
+  }
+  g.restore();
+}
+
+// Troll head: broad mossy-green face, big nose, two tusks, small yellow eyes, drooping ears, and
+// its lantern glowing beside it. Red glow when it's staring.
+function drawTroll(g, x, y, k, angry) {
+  g.save();
+  g.translate(x, y);
+  g.scale(k, k);
+  if (angry) {
+    g.fillStyle = 'rgba(230, 70, 80, 0.35)';
+    g.beginPath();
+    g.arc(0, 0, 13, 0, Math.PI * 2);
+    g.fill();
+  }
+  // lantern glow down at its side
+  const lg = g.createRadialGradient(9, 6, 0, 9, 6, 6);
+  lg.addColorStop(0, 'rgba(255, 220, 140, 1)');
+  lg.addColorStop(1, 'rgba(255, 190, 100, 0)');
+  g.fillStyle = lg;
+  g.beginPath();
+  g.arc(9, 6, 6, 0, Math.PI * 2);
+  g.fill();
+  g.shadowColor = 'rgba(40, 30, 50, 0.45)';
+  g.shadowBlur = 4;
+  g.strokeStyle = '#fffaf2';
+  g.lineWidth = 1.6;
+  g.fillStyle = '#8fa486';
+  // drooping ears behind the face
+  for (const s of [-1, 1]) {
+    g.beginPath();
+    g.moveTo(s * 6, -2.5);
+    g.lineTo(s * 12.5, 0.5);
+    g.lineTo(s * 6.5, 2.5);
+    g.closePath();
+    g.fill();
+    g.stroke();
+  }
+  g.beginPath();
+  g.ellipse(0, 0, 8.5, 8.8, 0, 0, Math.PI * 2);
+  g.fill();
+  g.shadowBlur = 0;
+  g.stroke();
+  // mossy tuft on top
+  g.fillStyle = '#6f9a5a';
+  g.beginPath();
+  g.ellipse(0, -7, 5, 2.4, 0, 0, Math.PI * 2);
+  g.fill();
+  // heavy brow, then small yellow eyes under it
+  g.fillStyle = '#71866a';
+  g.fillRect(-6, -3.8, 12, 2);
+  g.fillStyle = '#ffd84a';
+  for (const s of [-1, 1]) {
+    g.beginPath();
+    g.arc(s * 3.2, -0.9, 1.2, 0, Math.PI * 2);
+    g.fill();
+  }
+  // big round nose
+  g.fillStyle = '#9fb395';
+  g.beginPath();
+  g.ellipse(0, 2, 2.6, 2.4, 0, 0, Math.PI * 2);
+  g.fill();
+  // tusks
+  g.fillStyle = '#fbf6ea';
+  for (const s of [-1, 1]) {
+    g.beginPath();
+    g.moveTo(s * 2.8, 6.4);
+    g.lineTo(s * 4.2, 6.4);
+    g.lineTo(s * 3.7, 3.4);
+    g.closePath();
     g.fill();
   }
   g.restore();

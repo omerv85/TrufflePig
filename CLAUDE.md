@@ -20,7 +20,8 @@ hidden in the ground beside tree trunks, digs them up, and can find its way back
 using the minimap. **Phones play in landscape** (an upright phone gets a "Turn your phone sideways" screen); test at
 812×375. Desktop works with mouse or keyboard.
 
-Danger: a **wolf**, a **bear** and a **witch** prowl the forest (never more than two of them around at once). Getting
+Danger: a **wolf** and a **bear** prowl the forest by day, a **witch** and a **troll** by night (never more than two of
+them around at once). Getting
 too close to any of them ends the game (game-over screen with Share and New game). Docile animals (deer, goat, squirrel, moose) wander too: they stare, then flee.
 
 ## Files
@@ -52,7 +53,8 @@ voice is recorded.
   (`addClod`) that stay where flung dirt lands (`Particles.onLand`).
 - `src/birds.js`: songbirds on the forest floor (`Birds`): little flocks that hop and peck, and burst up and fly
   away when the pig comes close (`SCARE` 4.5 m + 1 m per m/s of pig speed), with the wing-flap recording.
-- `src/animals.js`: all forest animals on one algorithm (`Animals` manager, `Creature`): the `SPECIES` table (sizes,
+- `src/animals.js`: all forest animals on one algorithm (the troll adds a `smash` state, `animateTroll`, and the one
+  `lanternLight` PointLight that follows its lantern) (`Animals` manager, `Creature`): the `SPECIES` table (sizes,
   speeds, stare/attack/calm distances, spawn distances, sounds), spawn `SLOTS`, walk/stare/attack/flee states, growls,
   the witch's `cast` state and her own animation (`animateWitch`), and the `MAX_DANGER` 2 cap.
 - `src/curse.js`: the witch's curse (`Curse`): green sparkles from her wand tip, the smoke flash, and the toad
@@ -61,7 +63,9 @@ voice is recorded.
 - `src/creatures.js`: the animal models from primitives (`createCreature(kind, size)`): wolf (grey, yellow eyes, broad
   chest, mane, shaggy cheek ruffs), bear (brown, shoulder hump, heavy cheeks), witch (upright: purple flared robe and
   ragged cape, pale-green face with hooked nose and yellow eyes, orange hair, tall bent black hat with a pink band,
-  pointy boots, a wand with a glowing green tip, `arm`/`wand`/`tip`/`tipMat`), deer (antlers, white tail), goat (white,
+  pointy boots, a wand with a glowing green tip, `arm`/`wand`/`tip`/`tipMat`), troll (about 3 m tall, the biggest
+  creature: hunched, mossy grey-green, big nose, tusks, drooping ears, yellow eyes, loincloth; `armL`/`lantern`/
+  `lanternCore`/`halo` (the lantern glow and halo ignore fog so it shows from afar), `arm`/`club`/`clubLen`), deer (antlers, white tail), goat (white,
   horns, beard), squirrel (bushy tail), moose (palmate antlers, dewlap).
 - `src/audio.js`: `Ambience`: synthesized breeze, leaf gusts, insect drone, cicadas, birds, brook, splashes,
   footsteps, digging, chime; recorded pig calls (`loadSamples`, `playSample`).
@@ -80,7 +84,10 @@ after a 2.5 s gap while she keeps staring). `walking-in-water.mp3` (owner-suppli
 (`WADE_STEPS` onsets, ~0.35-0.5 s slices) on each step in a creek, and a quieter, shorter, higher one in a mud puddle
 (`splash(intensity, small)`; the old synthesized splash is the fallback). `frog.mp3` (owner-supplied, 22.9 s of croaks about every 0.7 s): single
 croaks cut from it (offsets 0.72 / 1.45 / 2.25 s, `croak(i)`) as the smoke clears and on each of the toad's hops. Her
-spell shimmer and the smoke "poof" are synthesized (`spell`, `poof` in `audio.js`). The docile animals are silent (no recordings yet). `intro-girl.mp3`: a little British girl saying
+spell shimmer and the smoke "poof" are synthesized (`spell`, `poof` in `audio.js`). Troll sounds (Pixabay, freesound_community): `troll-idle.mp3` ("troll idle noises", 25.8 s of grumbling; random
+3-3.5 s slices as it comes into map range and every 4-8 s while it walks within it, quieter the farther off) and
+`troll-roars.mp3` ("troll roars", 11 s, six separate roars listed in `TROLL_ROARS`; one at a time while it stares,
+the long one as it charges). The club's thump is synthesized (`thud`). The docile animals are silent (no recordings yet). `intro-girl.mp3`: a little British girl saying
   "Finding truffles is hard... but I bet you can do it! Just follow the yellow mist!", played once 0.8 s after "Tap to
   start" (`playIntro`). Generated with Microsoft's neural TTS voice en-GB-MaisieNeural via the `edge-tts` Python
   package (rate -8%, pitch +12Hz). `hint-girl.mp3`: the same voice saying "There's a truffle nearby! Follow the yellow
@@ -126,8 +133,8 @@ Owner preferences:
   `window.__game = { player, forest, camera, renderer, scene, audio, hud, hunt, birds, animals, setPaused, sky, snortNow }`, e.g. teleport with `player.pos.set(...)`,
   turn with `player.heading`, find truffles with `[...forest.nearbyTruffles(x, z, range)]`, set the counter with
   `hud.setTruffles(n)`, trigger a nose raise with `snortNow()`, put an animal anywhere with
-  `animals.spawnAt('bear', x, z, player)` (any kind; replaces the one in its slot, ignores the 2-predator cap). A
-  wolf/bear within 26 m stares, within 12 m attacks; a witch stares within 26 m and casts within 9 m. `__game.curse`
+  `animals.spawnAt('bear', x, z, player)` (any kind, e.g. `'troll'`; replaces the one in its slot, ignores the 2-predator cap). A
+  wolf/bear within 26 m stares, within 12 m attacks (the troll 28 / 12 m); a witch stares within 26 m and casts within 9 m. `__game.curse`
   and `__game.pig` are exposed too. The game must be started for animals to move. Modules can be imported directly
   (`await import('/src/noise.js')`) for checks such as `streamDist`.
 - If the browser pane is hidden, `requestAnimationFrame` slows or stops, so timed checks see stale state. For logic,
@@ -220,12 +227,12 @@ HUD
 - No share button during play (**moved into the pause menu and the game-over screen at the owner's request**). It
   opens `wa.me` with "I found N truffles in the forest in TrufflePig 🐷 / How many can you find? <game link>"; from
   the game-over screen "I found N truffles in TrufflePig 🐷 before a wolf got me 🐺 / ..." or "... before a bear got me
-  🐻" / "... before a witch turned me into a toad 🐸" (with 0 truffles: "A bear got me in the forest ..."; `shareText` in
+  🐻" / "... before a witch turned me into a toad 🐸" / "... before a troll clobbered me 🧌" (with 0 truffles: "A bear got me in the forest ..."; `shareText` in
   `main.js`).
 - Game over: dark reddish wash, grey "Game over" banner, "The wolf got you!" / "The bear got you!" / "The witch turned you
-  into a toad!", "You found N truffles", Share and
+  into a toad!", "The troll got you!", "You found N truffles", Share and
   New game. The pause button is hidden and Escape/P do nothing while it's up.
-- Wolf, bear and witch on the minimap: grey wolf head with yellow eyes / brown bear head with round ears / green witch
+- Wolf, bear, witch and troll on the minimap (troll: grey-green face, big nose, tusks, drooping ears, a lantern glow): grey wolf head with yellow eyes / brown bear head with round ears / green witch
   face under a purple pointed hat, only while it's inside the map; a pulsing red glow behind it
   once it's staring or attacking.
 - Speech bubble over the pig: only "squee!" / "squee! squee!" when very close to a truffle. The "sniff sniff"
@@ -274,7 +281,7 @@ Animals (the owner's design)
 - All animals use the same algorithm. At most one wolf, one bear, one witch and one docile animal (deer, goat, squirrel or moose,
   picked at random, the squirrel half the time) at a time, and **never more than two of the three dangerous ones**
   (`MAX_DANGER`, owner's request): a predator whose timer is due while two are around waits 8-15 s and tries again. **Wolves and bears only
-  appear by day, the witch only by night** (owner's request; night = `night >= 0.5` in `main.js`, i.e. from t=90 s to
+  appear by day, the witch and the troll only by night** (owner's request; night = `night >= 0.5` in `main.js`, i.e. from t=90 s to
   t=390 s of each 8-min cycle; slot field `when`). One already around stays when day turns to night or back; a slot
   whose timer is due at the wrong time of day checks again every 5-12 s. They keep apart: a new animal never appears
   within `MIN_SEP` 45 m of another, and walking animals steer away from each other inside `KEEP_APART` 35 m.
@@ -285,6 +292,14 @@ Animals (the owner's design)
   sparkles stream at it, a quick lilac smoke flash hides the pig, and as it clears a green toad (bulging eyes, pink
   cheeks) sits where the pig was, facing the camera, and croaks; it makes two high hops (`HOP_HEIGHT` 0.8 m, raised at
   the owner's request; to one side, then the other), croaking on each, and the game ends.
+- Troll (owner's design, night only like the witch; first after 135 s, then 30-60 s after the last left): the biggest
+  creature, about 3 m tall. Walks slowly (0.8 m/s) with a glowing lantern held out in its left hand (a warm halo and a
+  real light on the ground round it, visible through the night haze from far off) and a big knotted club in its right,
+  dragged behind with its end on the ground. Grumbles ("troll idle") while far off, roars ("troll roars") when close.
+  Within 28 m it stops, straightens, lifts the lantern toward the pig and grips the club upright. Within 12 m it roars,
+  raises the club overhead, charges (5.5 m/s), and at `SMASH_REACH` swings it down onto the pig (`SMASH_HIT` 0.42 s
+  in): a thump, red flash, squeal, and the pig is knocked over and sent tumbling a few metres (`fling` in `main.js`);
+  game over 1.4 s later. Collision radius 0.85 m.
 - Bear: same as the wolf, bigger and brown, first after 75 s (then 35-70 s after the last left). **"bear growl"** when it
   comes into map range, **"growling bear"** while it stares and as it charges. Bear head on the map. "The bear got
   you!" and "a bear got me 🐻" in the share text.

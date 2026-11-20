@@ -1,3 +1,4 @@
+import * as THREE from 'three';
 import { terrainHeight } from './noise.js';
 import { createCreature } from './creatures.js';
 
@@ -7,6 +8,8 @@ import { createCreature } from './creatures.js';
 //  - dangerous ones (wolf, bear) charge, leap over the pig, and the game is over. They show on
 //    the minimap and call out (howl / growl) as they come into map range, and growl while staring.
 //    The witch doesn't charge: she raises her wand and curses the pig into a toad (main.js).
+//    The troll (night only, like the witch) lumbers along dragging its club, its lantern glowing
+//    through the dark; it charges, swings the club overhead and smacks the pig with it.
 //  - docile ones (deer, goat, moose) turn and flee. The squirrel dashes to the nearest tree,
 //    scurries up the trunk into the leaves and is gone. Silent, and not on the map.
 // At most one wolf, one bear, one witch and one docile animal are around at a time (and never more
@@ -21,6 +24,10 @@ const CLIMB_SPEED = 2.6;   // m/s up a trunk (squirrel)
 const TREE_SEARCH = 22;    // a squirrel looks for a tree this close
 const MAX_DANGER = 2;      // dangerous animals around at once (of wolf, bear, witch)
 const CAST_TIME = 1.1;     // the witch raises her wand, then the curse hits
+const SMASH_REACH = 3.3;   // the charging troll starts its swing this far from the pig (it skids ~0.9 m on)
+const SMASH_HIT = 0.42;    // seconds into the swing when the club lands
+// The separate roars in troll-roars.mp3: [start, length] in seconds (found by measuring the file).
+const TROLL_ROARS = [[0.05, 0.95], [1.75, 1.35], [3.55, 1.1], [5.35, 1.1], [7.05, 1.85], [9.45, 1.0]];
 
 // map: sound as it comes into minimap range. stare: growl slices while staring (end = last usable
 // second of the recording). charge: the snarl as it charges.
@@ -52,18 +59,30 @@ export const SPECIES = {
       stare: { name: 'witchStaring', vol: 0.9, volClose: 0.3, whole: 5.6, gap: 2.5 },
     },
   },
+  troll: {
+    danger: true, smash: true, size: 1.0, radius: 0.85, walk: 0.8, run: 5.5, windup: 0.8, alert: 28, close: 12, calm: 38,
+    spawn: [86, 96], barnKeep: 40,
+    // far off: grumbling "troll idle" mutters now and then; close: the "troll roars" (one roar at a time)
+    sounds: {
+      map: { name: 'trollIdle', vol: 1.1, slice: 3.2 },
+      idle: { name: 'trollIdle', vol: 0.9, every: [4, 8], len: [2.6, 3.6] },
+      stare: { name: 'trollRoars', vol: 0.75, volClose: 0.4, clips: TROLL_ROARS, gap: [0.7, 1.6] },
+      charge: { name: 'trollRoars', vol: 1.4, clip: TROLL_ROARS[4] },
+    },
+  },
   deer: { size: 1.0, walk: 1.2, run: 8, alert: 24, close: 12, calm: 34, spawn: [75, 90], barnKeep: 20 },
   goat: { size: 1.0, walk: 0.9, run: 6.5, alert: 16, close: 8, calm: 26, spawn: [75, 90], barnKeep: 20 },
   moose: { size: 1.1, walk: 1.0, run: 6.5, alert: 24, close: 12, calm: 34, spawn: [75, 90], barnKeep: 20 },
   squirrel: { size: 1.8, walk: 0.8, run: 5, alert: 10, close: 5, calm: 18, spawn: [55, 70], barnKeep: 15, hop: true, climbs: true },
 };
 
-// One wolf, one bear, one witch, one docile animal at most. first: seconds of play before the first one.
-// when: wolves and bears only appear by day, the witch only by night (one already around stays when it turns).
+// One wolf, one bear, one witch, one troll, one docile animal at most. first: seconds of play before the first one.
+// when: wolves and bears only appear by day, the witch and the troll only by night (one already around stays when it turns).
 const SLOTS = [
   { kinds: ['wolf'], first: 35, respawn: [25, 50], when: 'day' },
   { kinds: ['bear'], first: 75, respawn: [35, 70], when: 'day' },
   { kinds: ['witch'], first: 110, respawn: [35, 70], when: 'night' },
+  { kinds: ['troll'], first: 135, respawn: [30, 60], when: 'night' },
   // squirrels listed three times: half of the docile animals are squirrels
   { kinds: ['deer', 'goat', 'squirrel', 'squirrel', 'squirrel', 'moose'], first: 12, respawn: [8, 20] },
 ];
@@ -87,17 +106,18 @@ class Creature {
     this.gait = 0;
     this.snarl = 0;                // 0..1 snarl pose (predators)
     this.look = 0;                 // 0..1 alert head-up pose (docile)
-    this.state = 'walk';           // walk | alert | windup | run | leap | cast | done | flee | totree | climb
+    this.state = 'walk';           // walk | alert | windup | run | leap | smash | cast | done | flee | totree | climb
     this.stateT = 0;
     this.inMap = false;
     this.howlCool = 0;
+    this.idleT = 0;
     this.growl = null;
     this.growlT = 0;
     this.seed = Math.random() * 100;
     this.gone = false;
   }
 
-  get attacking() { return ['windup', 'run', 'leap', 'cast', 'done'].includes(this.state); }
+  get attacking() { return ['windup', 'run', 'leap', 'smash', 'cast', 'done'].includes(this.state); }
 
   setState(s) { this.state = s; this.stateT = 0; }
 
@@ -112,8 +132,11 @@ class Creature {
     // A predator coming into map range calls out through the trees.
     const inMap = dist < mgr.mapRange;
     if (sp.danger && inMap && !this.inMap && this.howlCool <= 0 && this.state === 'walk') {
-      mgr.audio.call?.(sp.sounds.map.name, { vol: sp.sounds.map.vol, pan: this.pan(player) });
+      const s = sp.sounds.map;
+      if (s.slice) mgr.audio.slice?.(s.name, { vol: s.vol, duration: s.slice, pan: this.pan(player), fade: 0.2 });
+      else mgr.audio.call?.(s.name, { vol: s.vol, rate: s.rate, pan: this.pan(player) });
       this.howlCool = 30;
+      this.idleT = rand(...(sp.sounds.idle?.every ?? [5, 5]));
     }
     this.inMap = inMap;
 
@@ -121,6 +144,11 @@ class Creature {
     switch (this.state) {
       case 'walk': {
         if (dist > mgr.despawn) { this.gone = true; return; }
+        const idle = sp.sounds?.idle;
+        if (idle && inMap && (this.idleT -= dt) <= 0) {  // mutters to itself, quieter the farther off
+          mgr.audio.slice?.(idle.name, { vol: idle.vol * (1 - 0.6 * dist / mgr.mapRange), duration: rand(...idle.len), pan: this.pan(player), fade: 0.25 });
+          this.idleT = rand(...idle.every) + idle.len[1];
+        }
         if (dist < sp.alert) { this.setState('alert'); break; }
         // mostly perpendicular to the pig's heading, wandering a little
         const [rx, rz] = right(player.heading);
@@ -143,7 +171,8 @@ class Creature {
           if (dist < sp.close && !busy) {
             this.setState('windup');
             const c = sp.sounds.charge;
-            mgr.audio.slice?.(c.name, { vol: c.vol, rate: c.rate, duration: c.duration, end: c.end, pan: this.pan(player), fade: 0.05 });
+            if (c.clip) mgr.audio.playSample?.(c.name, { vol: c.vol, offset: c.clip[0], duration: c.clip[1], fade: 0.05, pan: this.pan(player) * 0.6 });
+            else mgr.audio.slice?.(c.name, { vol: c.vol, rate: c.rate, duration: c.duration, end: c.end, pan: this.pan(player), fade: 0.05 });
             break;
           }
           this.updateGrowl(dt, player, dist);
@@ -192,13 +221,14 @@ class Creature {
       case 'windup': // a brief crouch before the lunge (and time for the pig to turn and see it)
         this.turnTo(toPig, 8, dt);
         snarl = 1;
-        if (this.stateT > 0.45) this.setState('run');
+        if (this.stateT > (sp.windup ?? 0.45)) this.setState('run');
         break;
       case 'run':
         this.turnTo(toPig, 8, dt);
         targetSpeed = sp.run;
         snarl = 0.6;
-        if (dist < LEAP_START) {
+        if (sp.smash && dist < SMASH_REACH) { this.setState('smash'); break; }
+        if (!sp.smash && dist < LEAP_START) {
           // leap over the pig, landing a little behind and to the side of it
           const ux = dx / dist, uz = dz / dist;
           const s = Math.random() < 0.5 ? -1 : 1;
@@ -216,6 +246,12 @@ class Creature {
         if (k >= 1) this.setState('done');
         break;
       }
+      case 'smash': // the troll: club wound back overhead, then brought down on the pig
+        this.turnTo(toPig, 6, dt);
+        snarl = 1;
+        if (this.stateT >= SMASH_HIT && !this.hit) { this.hit = true; mgr.onPounce?.(this.kind); }
+        if (this.stateT > 0.75) this.setState('done');
+        break;
       case 'cast': // the witch raises her wand overhead, then points it at the pig: the curse
         this.turnTo(toPig, 8, dt);
         snarl = 1;
@@ -223,7 +259,7 @@ class Creature {
         if (this.stateT >= CAST_TIME) { mgr.onCurse?.(this.kind, this); this.setState('done'); }
         break;
       case 'done': // landed: turns round to stand over the pig, snarling
-        this.turnTo(toPig, 6, dt);
+        if (!sp.smash) this.turnTo(toPig, 6, dt);
         snarl = 1;
         if (this.stateT > (sp.caster ? 2.9 : 1.4) && !this.over) { this.over = true; this.stopGrowl(0.4); mgr.onGameOver?.(this.kind); }
         break;
@@ -236,7 +272,7 @@ class Creature {
       this.pos.z += Math.cos(this.yaw) * this.speed * dt;
       // (a squirrel near its tree skips collisions so it can reach the bark)
       const nearTree = this.state === 'totree' && Math.hypot(this.tree.x - this.pos.x, this.tree.z - this.pos.z) < this.tree.r + 1.5;
-      if ((this.state === 'walk' || this.state === 'flee' || this.state === 'totree') && !nearTree) mgr.forest.collide(this.pos, 0.45 * sp.size);
+      if ((this.state === 'walk' || this.state === 'flee' || this.state === 'totree') && !nearTree) mgr.forest.collide(this.pos, sp.radius ?? 0.45 * sp.size);
       this.pos.y = terrainHeight(this.pos.x, this.pos.z);
     }
     const k = 1 - Math.exp(-8 * dt);
@@ -283,6 +319,13 @@ class Creature {
     this.growlT -= dt;
     if (this.growlT > 0) return;
     const s = this.sp.sounds.stare;
+    if (s.clips) { // one roar at a time, louder the closer
+      const close = 1 - Math.min(1, Math.max(0, (dist - this.sp.close) / (this.sp.alert - this.sp.close)));
+      const [at, len] = pick(s.clips);
+      this.growl = this.mgr.audio.playSample?.(s.name, { vol: s.vol + s.volClose * close, offset: at, duration: len, fade: 0.06, pan: this.pan(player) * 0.6 }) || null;
+      this.growlT = len + rand(...s.gap);
+      return;
+    }
     if (s.whole) {
       const close = 1 - Math.min(1, Math.max(0, (dist - this.sp.close) / (this.sp.alert - this.sp.close)));
       this.growl = this.mgr.audio.playSample?.(s.name, { vol: s.vol + s.volClose * close, duration: s.whole, fade: 0.3, pan: this.pan(player) * 0.6 }) || null;
@@ -291,7 +334,7 @@ class Creature {
     }
     const close = 1 - Math.min(1, Math.max(0, (dist - this.sp.close) / (this.sp.alert - this.sp.close)));
     const len = rand(2.6, 3.4);
-    this.growl = this.mgr.audio.slice?.(s.name, { vol: s.vol + s.volClose * close, duration: len, end: s.end, pan: this.pan(player), fade: 0.25 }) || null;
+    this.growl = this.mgr.audio.slice?.(s.name, { vol: s.vol + s.volClose * close, duration: len, end: s.end, rate: s.rate, pan: this.pan(player), fade: 0.25 }) || null;
     this.growlT = len - 0.25;
   }
 
@@ -354,8 +397,68 @@ class Creature {
     m.tipMat.color.setRGB(0.45 + 0.3 * gl, 0.85 + 0.15 * gl, 0.3 + 0.25 * gl);   // green, brighter as she casts
   }
 
+  // The troll: heavy rolling steps, the lantern held out in front and swaying on its handle, the
+  // club dragged behind with its end on the ground. Staring, it straightens up, lifts the lantern
+  // toward the pig and grips the club upright; charging, the club goes up overhead; then the smash.
+  animateTroll(dt) {
+    const m = this.m, sn = this.snarl, t = performance.now() / 1000;
+    const running = this.state === 'run';
+    this.gait += this.speed * dt * (running ? 1.5 : 2.4);
+    const g = this.gait, moving = Math.min(1, this.speed / this.sp.walk);
+    m.root.position.set(this.pos.x, this.pos.y, this.pos.z);
+    m.root.rotation.set(0, this.yaw, 0);
+    m.legs.forEach((leg, i) => { leg.rotation.x = Math.sin(g + i * Math.PI) * (running ? 0.75 : 0.42) * moving; });
+    m.body.position.y = Math.abs(Math.sin(g)) * (running ? 0.12 : 0.05) * moving;
+    m.body.rotation.z = Math.sin(g) * 0.07 * moving;
+    let lean = 0.14 - 0.08 * sn + (running ? 0.18 : 0);
+    let lampX = -0.55 + Math.sin(g) * 0.1 * moving - 0.5 * sn;   // the lantern arm, held out
+    let armX = 0.3 + Math.sin(g + Math.PI) * 0.06 * moving, clubDir = null;  // null: dragging
+    if (this.state === 'alert') {
+      armX = -0.5; clubDir = 0.35;                       // club gripped upright in front of it
+    } else if (this.state === 'windup') {
+      const u = Math.min(1, this.stateT / (this.sp.windup * 0.7));
+      armX = -0.5 - 2.2 * u; clubDir = 0.35 - 0.95 * u;  // up over its head
+      lampX = -0.3;
+    } else if (running) {
+      armX = -2.7; clubDir = -0.6; lampX = -0.25 + Math.sin(g) * 0.3;
+    } else if (this.state === 'smash' || this.state === 'done') {
+      const k = this.state === 'done' ? 1 : this.stateT;
+      if (k < SMASH_HIT - 0.12) {                        // winds back even further
+        const u = k / (SMASH_HIT - 0.12);
+        armX = -2.7 - 0.35 * u; clubDir = -0.6 - 0.6 * u; lean = 0.1 - 0.15 * u;
+      } else {                                           // and brings it down: wham
+        const u = Math.min(1, (k - (SMASH_HIT - 0.12)) / 0.12);
+        armX = -3.05 + 2.15 * u; clubDir = -1.2 + 3.5 * u; lean = -0.05 + 0.4 * u;
+      }
+      if (this.state === 'done') {                       // leans on the club over the pig
+        const u = Math.min(1, this.stateT / 1.2);
+        armX = -0.9 + 0.3 * u; clubDir = 2.3 + 0.3 * u; lean = 0.35 - 0.15 * u;
+      }
+      lampX = -0.3;
+    }
+    m.body.rotation.x = lean;
+    m.armL.rotation.x = lampX;
+    // the lantern hangs straight down from the fist, swinging a little behind the motion
+    m.lantern.rotation.x = -(lampX + lean) + Math.sin(t * 2.1 + this.seed) * 0.08 + Math.sin(g) * 0.12 * moving;
+    m.arm.rotation.x = armX;
+    if (clubDir === null) {
+      // dragging: tip the club so its far end rests on the ground behind
+      const hy = 2.2 * Math.cos(lean) + m.body.position.y - 1.15 * Math.cos(armX + lean);
+      const c = Math.max(-1, Math.min(1, (0.12 - hy) / m.clubLen));
+      m.club.rotation.x = -Math.acos(c) - armX - lean;
+    } else m.club.rotation.x = clubDir - armX - lean;
+    m.head.rotation.x = -0.15 * sn + Math.sin(t * 1.3 + this.seed) * 0.04 + (running ? -0.2 : 0);
+    m.head.rotation.y = this.state === 'walk' ? Math.sin(t * 0.4 + this.seed) * 0.25 : 0;
+    m.jaw.rotation.x = sn * (0.22 + 0.06 * Math.sin(t * 6));
+    // the flame flickers
+    const fl = 0.85 + 0.1 * Math.sin(t * 13 + this.seed) + 0.06 * Math.sin(t * 29);
+    m.halo.scale.setScalar(1.6 * fl);
+    this.flame = fl;
+  }
+
   animate(dt) {
     if (this.kind === 'witch') return this.animateWitch(dt);
+    if (this.kind === 'troll') return this.animateTroll(dt);
     const m = this.m, sp = this.sp, sn = this.snarl, look = this.look;
     const climbing = this.state === 'climb';
     const running = this.state === 'run' || this.state === 'flee' || this.state === 'totree' || climbing, leaping = this.state === 'leap';
@@ -387,13 +490,16 @@ class Creature {
       else if (running) a = Math.sin(g + (front ? 0 : Math.PI * 0.8) + side * 0.25) * 0.95;       // gallop
       else a = Math.sin(g + (front ? 0 : Math.PI) + (side > 0 ? Math.PI : 0)) * 0.45 * moving;     // walk
       leg.rotation.x = a + (front ? -0.18 : 0.12) * sn * (leaping ? 0 : 1);                        // crouched: front legs splay
+      if (sp.hop && front) leg.rotation.x += 1.3 * look;                                         // sitting up: paws tucked at its chest
     }
 
     // Predators crouch low, head down and forward, lips pulled back, hackles up.
     // Docile animals lift their heads and stare, ears twitching.
     const bob = sp.hop ? Math.abs(Math.sin(g)) * m.hip * 0.6 * moving
       : Math.abs(Math.sin(g)) * (running ? 0.06 : 0.02 * moving);
-    m.body.position.y = -0.1 * sn * (m.hip / 0.74) + bob;
+    // a hopper's bounce lifts the whole animal, legs and all, so they stay attached
+    if (sp.hop) m.root.position.y += bob;
+    m.body.position.y = -0.1 * sn * (m.hip / 0.74) + (sp.hop ? 0 : bob);
     m.body.rotation.x = 0.08 * sn + (running && !sp.hop ? Math.sin(g) * 0.08 : 0) - (sp.hop ? 0.55 * look : 0); // squirrel sits up
     m.neck.rotation.x = 0.25 * sn - 0.1 + (this.state === 'walk' ? 0.12 : 0) - 0.35 * look;
     m.head.rotation.x = -0.15 * sn + Math.sin(t * 9) * 0.03 * sn;
@@ -427,6 +533,10 @@ export class Animals {
     Object.assign(this, { scene, forest, audio, barn, mapRange, onPounce, onCastTick, onCurse, onGameOver });
     this.despawn = mapRange + 55;
     this.list = [];
+    // The troll's lantern lights up the ground round it. One light, always in the scene (dark when
+    // there's no troll), so the forest's shaders don't need rebuilding when a troll turns up.
+    this.lanternLight = new THREE.PointLight('#ffb862', 0, 16, 1.6);
+    scene.add(this.lanternLight);
     this.reset();
   }
 
@@ -496,6 +606,11 @@ export class Animals {
   // isNight: true from halfway into dusk until halfway through dawn (main.js night >= 0.5).
   update(dt, player, isNight = false) {
     const attacker = this.attacker;
+    const troll = this.list.find((c) => c.kind === 'troll');
+    if (troll) {
+      troll.m.lanternCore.getWorldPosition(this.lanternLight.position);
+      this.lanternLight.intensity = 7 * (troll.flame ?? 1);
+    } else this.lanternLight.intensity = 0;
     for (const slot of this.slots) {
       if (!slot.c) {
         slot.timer -= dt;

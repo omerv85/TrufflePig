@@ -494,7 +494,9 @@ export class Ambience {
       frog: ['assets/sounds/frog.mp3', 1.4],                   // the toad's croaks after the curse
       intro: ['assets/sounds/intro-girl.mp3', 1.0],             // the girl's welcome line at the start
       hint: ['assets/sounds/hint-girl.mp3', 1.0],               // her "truffle nearby" hint near the first truffle
-      wade: ['assets/sounds/walking-in-water.mp3', 2.2],        // splashing steps in a creek or a mud puddle
+      wade: ['assets/sounds/walking-in-water.mp3', 2.2],
+      trollIdle: ['assets/sounds/troll-idle.mp3', 1.0],        // the troll grumbling to itself, far off
+      trollRoars: ['assets/sounds/troll-roars.mp3', 1.0],      // the troll roaring, close by        // splashing steps in a creek or a mud puddle
     };
     this.samples = {};
     await Promise.all(Object.entries(files).map(async ([name, [url, gain]]) => {
@@ -553,9 +555,9 @@ export class Ambience {
 
   // ---------- wolf and bear ----------
   // A whole call, e.g. the distant howl as a wolf comes into minimap range.
-  call(name, { vol = 1, pan = 0 } = {}) {
+  call(name, { vol = 1, pan = 0, rate = 1 } = {}) {
     if (!this.ctx) return null;
-    return this.playSample(name, { vol, pan: pan * 0.6 }) || null;
+    return this.playSample(name, { vol, rate, pan: pan * 0.6 }) || null;
   }
 
   // A random slice of a longer recording (growls while a predator stares, the snarl as it
@@ -831,6 +833,23 @@ export class Ambience {
 
   // One splashing step: a slice of the wading recording around one of its steps (onsets found
   // by measuring the file). `small` is a mud puddle: quieter, shorter and a little higher.
+  // The troll's club landing: a deep thump with a crack of wood.
+  thud() {
+    if (!this.ctx) return;
+    const ctx = this.ctx;
+    const { t } = this.noiseHit(this.brown, 0.5, { type: 'lowpass', freq: 380, q: 0.9, vol: 1.1, attack: 0.004 });
+    this.noiseHit(this.white, 0.12, { type: 'bandpass', freq: 1800, q: 1.2, vol: 0.25, attack: 0.002 });
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(110, t);
+    o.frequency.exponentialRampToValueAtTime(42, t + 0.3);
+    g.gain.setValueAtTime(0.7, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.4);
+    o.connect(g).connect(this.master);
+    o.start(t);
+    o.stop(t + 0.45);
+  }
+
   splash(intensity, small = false) {
     if (!this.ctx) return;
     const at = WADE_STEPS[Math.floor(Math.random() * WADE_STEPS.length)];
