@@ -10,12 +10,20 @@ export function createPig() {
 
   const root = new THREE.Group();
   root.rotation.order = 'YXZ';
+  // Digging lean: `lean` pivots at the hind legs so the rump stays planted while the
+  // front of the pig tips down into the hole; every part hangs from `rig`.
+  const lean = new THREE.Group();
+  lean.position.z = 1.05;
+  root.add(lean);
+  const rig = new THREE.Group();
+  rig.position.z = -1.05;
+  lean.add(rig);
 
   // Body: an egg that extends back toward the camera.
   const body = new THREE.Mesh(new THREE.SphereGeometry(0.5, 28, 20), skin);
   body.scale.set(1.0, 0.82, 1.4);
   body.position.set(0, 0.52, 0.62);
-  root.add(body);
+  rig.add(body);
 
   // Legs
   const legGeo = new THREE.CylinderGeometry(0.085, 0.075, 0.34, 10).translate(0, -0.17, 0);
@@ -26,7 +34,7 @@ export function createPig() {
     leg.position.set(x, 0.36, z);
     leg.add(new THREE.Mesh(legGeo, skin), new THREE.Mesh(hoofGeo, hoof));
     leg.userData.phase = phase;
-    root.add(leg);
+    rig.add(leg);
     legs.push(leg);
   }
 
@@ -34,12 +42,12 @@ export function createPig() {
   const tail = new THREE.Mesh(new THREE.TorusGeometry(0.07, 0.025, 8, 18, Math.PI * 1.7), skin);
   tail.position.set(0, 0.72, 1.36);
   tail.rotation.y = Math.PI / 2;
-  root.add(tail);
+  rig.add(tail);
 
   // Head pivots at the neck so it can lift its nose.
   const neck = new THREE.Group();
   neck.position.set(0, 0.74, 0.18);
-  root.add(neck);
+  rig.add(neck);
 
   const head = new THREE.Group();
   head.position.set(0, 0.08, -0.22);
@@ -95,18 +103,25 @@ export function createPig() {
     body.position.y = 0.52 + bob * 0.6;
     root.rotation.z = Math.sin(gait) * 0.025 * speedNorm - turn * 0.04;
 
+    // Digging: the pig leans into the hole, rump up, and wiggles side to side with each stroke.
+    lean.rotation.x = -dig * (0.17 + Math.sin(digPhase * 2) * 0.03);
+    lean.rotation.z = Math.sin(digPhase) * 0.06 * dig;
+    rig.position.x = Math.sin(digPhase) * 0.025 * dig;
+
     for (const leg of legs) leg.rotation.x = Math.sin(gait + leg.userData.phase) * 0.55 * speedNorm;
-    // front trotters scrape the ground while digging
-    legs[0].rotation.x += dig * (-0.5 + Math.sin(digPhase) * 0.7);
-    legs[1].rotation.x += dig * (-0.5 + Math.sin(digPhase + Math.PI) * 0.7);
-    // tail wiggles faster with excitement
-    tail.rotation.z = Math.sin(breath * (3 + excite * 16) + gait) * (0.25 + excite * 0.3);
+    // front trotters scrape the dirt back hard while digging; hind legs brace
+    legs[0].rotation.x += dig * (-0.35 + Math.sin(digPhase) * 0.95);
+    legs[1].rotation.x += dig * (-0.35 + Math.sin(digPhase + Math.PI) * 0.95);
+    legs[2].rotation.x += dig * 0.17;
+    legs[3].rotation.x += dig * 0.17;
+    // tail wiggles faster with excitement, and spins like mad while digging
+    tail.rotation.z = Math.sin(breath * (3 + excite * 16 + dig * 22) + gait) * (0.25 + excite * 0.3 + dig * 0.35);
 
     // Head: bob with steps, lift on snort.
     neck.position.y = 0.74 + bob + breathe;
     neck.rotation.x = snort * 0.55 + Math.sin(gait * 2) * 0.02 * speedNorm
       + excite * 0.12 + Math.sin(breath * 9) * excite * 0.05      // nose up, sniffing the air
-      - dig * 0.8 + Math.sin(digPhase * 2) * 0.1 * dig;            // head down into the dirt
+      - dig * 0.7 + Math.sin(digPhase * 2) * 0.18 * dig;           // head down, rooting in the dirt
     // turns towards the nearest truffle's scent (look: bearing in radians, + = left), up to ~23°
     const lookYaw = Math.max(-0.4, Math.min(0.4, look * 0.6));
     neck.rotation.y = -turn * 0.12 + (lookYaw + Math.sin(breath * 2.3) * excite * 0.06) * (1 - dig);
@@ -123,7 +138,8 @@ export function createPig() {
       const s = ear.userData.side;
       const flop = Math.sin(gait * 2 + s) * 0.12 * speedNorm;
       const twitch = twitchT > 0 && s === twitchSide ? Math.sin(twitchT * 40) * 0.15 : 0;
-      ear.rotation.z = -s * (0.55 - snort * 0.25) + flop + turn * 0.08 + twitch;
+      const digFlap = Math.sin(digPhase * 2 + s * 1.3) * 0.22 * dig; // ears flap with the effort
+      ear.rotation.z = -s * (0.55 - snort * 0.25) + flop + turn * 0.08 + twitch + digFlap;
       // negative = tips flop forward like a pig's; trotting pushes them back a little
       ear.rotation.x = -0.45 + speedNorm * 0.25 + snort * 0.3 + excite * 0.3 + Math.sin(breath * 11 + s) * excite * 0.08;
     }

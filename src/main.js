@@ -507,7 +507,7 @@ document.getElementById('new-game').addEventListener('click', () => {
   clock.t = 0; // a new game starts in the afternoon again
   player.pos.set(0, terrainHeight(0, 0), 0);
   Object.assign(player, { heading: 0, speed: 0, turnVel: 0, pitch: 0 });
-  knock = 0; knocked = false; camPull = 0;
+  knock = 0; knocked = false; camPull = 0; digCam = 0; digCamOn = false;
   snortT = -1; nextSnort = 3 + Math.random() * 3;
   flashEl.classList.remove('hit');
   forest.update(player.pos, Infinity);
@@ -559,15 +559,73 @@ const camLook = new THREE.Vector3();
 const _fwd = new THREE.Vector3();
 const _tmp = new THREE.Vector3();
 
+// Truffle-find shot: while the pig digs, the camera swings round from behind to a
+// front-quarter view of the whole pig, drifts slowly further round, holds while the
+// truffle pops out, then swings back behind the pig's head.
+const DIGCAM_DIST = 3.4;   // metres from the pig
+const DIGCAM_UP = 1.9;     // height above the pig's feet (looks down over bushes into the hole)
+const DIGCAM_ANG = 1.5;    // start angle from the pig's nose (radians; π = straight behind): side on
+const DIGCAM_ORBIT = -0.6; // drifts round toward the pig's face during the shot
+const DIGCAM_HOLD = 1.5;   // seconds after the truffle pops out before the camera returns
+let digCam = 0;            // 0..1 blend from the normal camera to the dig shot
+let digCamT = 0;           // seconds since the shot started
+let digCamOn = false;
+let digSide = 1;           // +1 = camera on the pig's left, -1 = right
+let digDist = DIGCAM_DIST; // pulled in closer when trees crowd the spot
+
+// How far the sight line from the pig to a camera at `ang`, `dist` away, and the space
+// just around the camera, stay clear of tree trunks and rocks (metres; negative = blocked).
+function viewClearance(h, ang, dist) {
+  const p = player.pos;
+  const dx = -Math.sin(h + ang) * dist, dz = -Math.cos(h + ang) * dist;
+  const L2 = dx * dx + dz * dz, ext = 1 + 0.9 / dist; // look 0.9 m past the camera too
+  let best = Infinity;
+  for (const c of forest.nearbyColliders(p.x, p.z, dist + 2)) {
+    const t = Math.min(ext, Math.max(0.2, ((c.x - p.x) * dx + (c.z - p.z) * dz) / L2));
+    best = Math.min(best, Math.hypot(c.x - (p.x + dx * t), c.z - (p.z + dz * t)) - c.r);
+  }
+  return best;
+}
+
+// Pick a side and distance with a clear view of the pig as it will face the truffle, over
+// the whole slow orbit; the farthest clear one wins, else the least blocked.
+function pickDigView() {
+  const t = hunt.target, p = player.pos;
+  const h = t ? Math.atan2(-(t.x - p.x), -(t.z - p.z)) : player.heading;
+  const first = Math.random() < 0.5 ? 1 : -1;
+  let best = null;
+  for (const dist of [DIGCAM_DIST, 2.9, 2.4]) {
+    for (const side of [first, -first]) {
+      let score = Infinity;
+      for (let i = 0; i <= 4; i++) score = Math.min(score, viewClearance(h, side * (DIGCAM_ANG + DIGCAM_ORBIT * i / 4), dist));
+      if (score > 0.6) { digSide = side; digDist = dist; return; }
+      if (!best || score > best.score) best = { side, dist, score };
+    }
+  }
+  digSide = best.side; digDist = best.dist;
+}
+
+const _dPos = new THREE.Vector3();
 function cameraTargets(outPos, outLook) {
   const h = player.heading, p = player.pos;
   _fwd.set(-Math.sin(h), 0, -Math.cos(h));
-  const back = CAM_BACK + 2.6 * camPull, up = CAM_UP + 0.8 * camPull;
-  outPos.set(p.x - _fwd.x * back, p.y + up, p.z - _fwd.z * back);
+  const s = smooth(Math.min(1, digCam));
+  // orbit around the pig: angle from its nose (π = behind), distance and height
+  const digAng = digSide * (DIGCAM_ANG + DIGCAM_ORBIT * smooth(Math.min(1, digCamT / 5)));
+  const ang = THREE.MathUtils.lerp(Math.PI * digSide, digAng, s);
+  const back = THREE.MathUtils.lerp(CAM_BACK + 2.6 * camPull, digDist, s);
+  const up = THREE.MathUtils.lerp(CAM_UP + 0.8 * camPull, DIGCAM_UP, s);
+  outPos.set(p.x - Math.sin(h + ang) * back, p.y + up, p.z - Math.cos(h + ang) * back);
   const floor = terrainHeight(outPos.x, outPos.z) + 0.7;
   if (outPos.y < floor) outPos.y = floor;
   const ahead = LOOK_AHEAD - 4 * camPull;
   outLook.set(p.x + _fwd.x * ahead, p.y + LOOK_UP - 0.3 * camPull, p.z + _fwd.z * ahead);
+  if (s > 0) {
+    // the dig shot looks at the pig's head and the hole, then up a little at the truffle
+    const pop = hunt.prizeT >= 0 ? smooth(Math.min(1, hunt.prizeT / 0.5)) * 0.45 : 0;
+    _dPos.set(p.x + _fwd.x * 0.35, p.y + 0.5 + pop, p.z + _fwd.z * 0.35);
+    outLook.lerp(_dPos, s);
+  }
 }
 cameraTargets(camPos, camLook);
 
@@ -595,6 +653,14 @@ function update(dt) {
     diff = Math.atan2(Math.sin(diff), Math.cos(diff));
     targetTurn = THREE.MathUtils.clamp(diff * 6, -MAX_TURN, MAX_TURN);
   }
+  // The truffle pops out: the pig stays put for a happy hop while the camera holds the shot.
+  const celebrating = hunt.prizeT >= 0 && hunt.prizeT < DIGCAM_HOLD;
+  if (celebrating) { targetSpeed = 0; targetTurn = 0; }
+  const wantDigCam = (hunt.digging || celebrating) && !attacked;
+  if (wantDigCam && !digCamOn) { pickDigView(); digCamT = 0; }
+  digCamOn = wantDigCam;
+  if (wantDigCam) digCamT += dt;
+  digCam = damp(digCam, wantDigCam ? 1 : 0, wantDigCam ? 2.4 : 1.8, dt);
 
   // A wolf or bear is charging: the pig freezes and turns to face it.
   if (attacked) {
@@ -658,6 +724,8 @@ function update(dt) {
     digPhase: hunt.digPhase,
   });
   if (knock > 0) pig.root.rotation.z = smooth(knock) * 1.4; // bowled over onto its side
+  // two happy hops as the truffle pops out
+  if (hunt.prizeT >= 0 && hunt.prizeT < 0.9) pig.root.position.y += Math.abs(Math.sin(hunt.prizeT / 0.45 * Math.PI)) * 0.2;
 
   forest.update(player.pos, 2);
   if (started && !attacked) hunt.update(dt, player);

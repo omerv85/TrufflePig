@@ -124,7 +124,10 @@ Owner preferences:
   trunks, big rocks, the barn box). The pig follows the terrain and pitches with the slope.
 - Camera (`cameraTargets`): `CAM_BACK` 1.75 m behind, `CAM_UP` 1.75 m up, looking `LOOK_AHEAD` 7 m ahead at
   `LOOK_UP`; FOV 72 in portrait, 58 in landscape. Leaves within ~1.8 m of the camera dither away so it never sits
-  inside a tree.
+  inside a tree. Dig shot (`digCam`, `DIGCAM_*`): while the pig digs and for `DIGCAM_HOLD` 1.5 s after the truffle
+  pops out, the camera swings round (polar blend) to a side view 3.4 m out and 1.9 m up, drifts toward the pig's face,
+  then swings back. `pickDigView` picks the side, and pulls in to 2.9 or 2.4 m, so the sight line and the camera
+  stay clear of trunks and rocks (a camera right by a trunk shows it as a speckled column).
 - Forest (`forest.js`): `CHUNK` 36 m, `RADIUS` 3 chunks loaded around the pig, built nearest-first, 2 per frame while
   moving. Each chunk is one merged vertex-coloured mesh (+ one water mesh if a stream crosses it), built from a
   per-chunk seed (`hash2(cx, cz, 99)`), so the world is the same every visit. Truffles use their own seed
@@ -226,8 +229,10 @@ Truffles (owner asked for them to be scarce, with a long trail to follow)
   and drift to the pig, fading as they arrive; they don't persist. More frequent and stronger as you close in.
 - Excitement: nose up and sniffing the air, looking around, ears perked, faster tail wag, more frequent nose raises.
 - Digging starts automatically when the pig reaches the spot (`DIG_DIST`): it stops, turns to face it, digs for
-  2.6 s (head down, trotters scraping, dirt flying, scratch sounds), leaves a dug-earth patch; then the truffle pops
-  up above the pig's head and spins away, and the counter goes up. Input is ignored while digging.
+  3.4 s (leans in with its rump up and wiggles, head rooting in the dirt, trotters scraping hard, ears flapping, tail
+  spinning, dirt flying, scratch sounds; the plume over that hole thins out), leaves a dug-earth patch; then the
+  truffle pops up above the pig's head and spins away, the pig does two happy hops, and the counter goes up. The
+  camera cuts to the dig shot for all of it (see Camera; owner's request). Input is ignored while digging and for `DIGCAM_HOLD` after the pop; the camera then eases back.
 
 Streams
 - Small streams the pig can wade through: slower in water (up to 40%), splashes instead of footsteps, ripple rings,

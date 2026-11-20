@@ -6,7 +6,7 @@ const SCENT_RANGE = 75;   // the pig catches the scent (drifting clouds, rare sq
 const WISP_RANGE = 18;    // mist rising from the ground is only seen this close
 const NEAR = 7;           // within this, mist rises strongly and steadily from the spot
 const DIG_DIST = 0.95;    // pig centre this close to the spot starts digging
-const DIG_TIME = 2.6;     // seconds of digging before the truffle pops out
+const DIG_TIME = 3.4;   // seconds of digging before the truffle pops out
 const HINT_DIST = 22;     // the girl's "there's a truffle nearby!" hint, once per game, just before the mist shows
 
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -188,7 +188,8 @@ export class TruffleHunt {
       const d = Math.hypot(t.x - px, t.z - pz);
       if (d > SCENT_RANGE) continue;
       if (d < nd) { nd = d; nearest = t; }
-      if (d < WISP_RANGE) this.emitWisps(t, d, dt);
+      // the plume over the hole being dug thins out so the digging can be seen
+      if (d < WISP_RANGE) this.emitWisps(t, d, t === this.target ? dt * 0.15 : dt);
     }
 
     // Excitement builds slowly from the edge of the scent and climbs steeply near the truffle.
@@ -316,12 +317,12 @@ export class TruffleHunt {
       this.audio.dig();
       const bx = Math.sin(player.heading), bz = Math.cos(player.heading); // backward
       const y = terrainHeight(t.x, t.z);
-      for (let i = 0; i < 4; i++) {
-        const sp = rand(0.8, 2.2), side = rand(-2.4, 2.4);
+      for (let i = 0; i < 6; i++) {
+        const sp = rand(1, 2.6), side = rand(-2.4, 2.4);
         this.fx.spawn({
           dirt: true, x: t.x + rand(-0.15, 0.15), y: y + 0.08, z: t.z + rand(-0.15, 0.15),
           vx: bx * sp + bz * side, vy: rand(2.6, 4.2), vz: bz * sp - bx * side,
-          grav: -9, drag: 0.6, life: rand(0.8, 1.1), a: 0.95, s0: rand(0.12, 0.2), s1: 0.1,
+          grav: -9, drag: 0.6, life: rand(0.8, 1.1), a: 0.95, s0: rand(0.14, 0.26), s1: 0.1,
         });
       }
       if (Math.random() < 0.5) this.emitWisps(t, 0, 0.3);
