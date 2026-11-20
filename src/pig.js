@@ -69,6 +69,25 @@ export function createPig() {
     snout.add(n);
   }
 
+  // Eyes: small glossy dark beads either side above the snout, each with a white glint.
+  // (Hidden from the usual camera behind the head; seen in the dig shot.)
+  const eyeMat = new THREE.MeshBasicMaterial({ color: '#2a1a20' });
+  const glintMat = new THREE.MeshBasicMaterial({ color: '#ffffff' });
+  const eyes = [];
+  for (const side of [-1, 1]) {
+    const eye = new THREE.Group();
+    eye.position.set(side * 0.21, 0.13, -0.33);
+    eye.rotation.y = -side * 0.55; // face out along the cheek
+    const ball = new THREE.Mesh(new THREE.SphereGeometry(0.064, 14, 10), eyeMat);
+    ball.scale.set(1, 1.15, 0.6);
+    const glint = new THREE.Mesh(new THREE.SphereGeometry(0.02, 8, 6), glintMat);
+    glint.position.set(side * 0.015, 0.028, -0.034);
+    eye.add(ball, glint);
+    head.add(eye);
+    eyes.push(eye);
+  }
+  let blinkT = 2 + Math.random() * 3;
+
   // Ears: flattened cones pointing up and out, with a deeper-pink inner.
   const earGeo = new THREE.ConeGeometry(0.19, 0.34, 16).translate(0, 0.17, 0);
   const innerGeo = new THREE.ConeGeometry(0.13, 0.24, 16).translate(0, 0.14, 0);
@@ -130,6 +149,12 @@ export function createPig() {
     const nose = Math.max(sniff, wiggle, dig * (0.5 + 0.5 * Math.sin(digPhase * 1.5)));
     snout.scale.setScalar(1 + nose * 0.12);
     snout.position.y = nose * 0.015;
+
+    // Blink every few seconds.
+    blinkT -= dt;
+    if (blinkT < -0.14) blinkT = 2.5 + Math.random() * 4;
+    const lid = blinkT < 0 ? 0.12 : 1;
+    for (const eye of eyes) eye.scale.y = lid;
 
     // Ears flop with the trot, perk up while sniffing, twitch sometimes.
     twitchT -= dt;

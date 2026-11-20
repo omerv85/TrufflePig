@@ -169,7 +169,8 @@ World and look
   dim bluish moonlight from the moon's side, pollen motes become green fireflies, a blue vignette (`--night`). Audio
   (`setNight`): day insects, cicadas and birdsong fade out; crickets, owl hoots and quiet, muffled distant wolf howls fade
   in (these mean no danger). Gameplay is unchanged. Test with `__game.clock.t = 180` (full night).
-- The pig: smooth pink skin. A shell-fur "fuzz" was tried and **removed at the owner's request** (looked weird).
+- The pig: smooth pink skin. Small dark bead eyes with a white glint that blink every few seconds (added when the
+  dig shot showed its face; hidden from the usual camera behind the head). A shell-fur "fuzz" was tried and **removed at the owner's request** (looked weird).
 
 Controls
 - Press anywhere and drag; a ring and pink knob show the joystick. Direction steers, distance sets speed.
