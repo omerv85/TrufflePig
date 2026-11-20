@@ -7,6 +7,7 @@ const WISP_RANGE = 18;    // mist rising from the ground is only seen this close
 const NEAR = 7;           // within this, mist rises strongly and steadily from the spot
 const DIG_DIST = 0.95;    // pig centre this close to the spot starts digging
 const DIG_TIME = 2.6;     // seconds of digging before the truffle pops out
+const HINT_DIST = 22;     // the girl's "there's a truffle nearby!" hint, once per game, just before the mist shows
 
 const rand = (a, b) => a + Math.random() * (b - a);
 
@@ -126,6 +127,7 @@ export class TruffleHunt {
     this.hadScent = false;
     this.cloudT = 0.5;
     this.strokeT = 0;
+    this.hinted = false;     // the girl's hint has played this game
 
     // The truffle that pops out of the ground
     const g = new THREE.IcosahedronGeometry(0.17, 2);
@@ -166,6 +168,7 @@ export class TruffleHunt {
     this.hadScent = false;
     this.squealT = 1.5;
     this.prizeT = -1;
+    this.hinted = false;
     this.prize.visible = false;
     for (const h of this.holes) h.visible = false;
     for (const p of this.fx.p) p.alive = false;
@@ -193,6 +196,10 @@ export class TruffleHunt {
     else if (nearest) {
       if (nd < SCENT_RANGE && nd > 2.5) this.emitClouds(nearest, nd, player, dt);
       if (nd < DIG_DIST) this.startDig(nearest);
+      if (!this.hinted && nd < HINT_DIST) {
+        this.hinted = true;
+        this.audio.playSample('hint', { when: 0.3 });
+      }
     }
 
     // Catching the scent: an oink when the pig first smells a truffle, and whenever

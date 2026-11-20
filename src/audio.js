@@ -354,6 +354,7 @@ export class Ambience {
       bearGrowl: ['assets/sounds/bear-growl.mp3', 1.8],         // short growl as a bear comes into map range
       bearGrowling: ['assets/sounds/bear-growling.mp3', 0.6],   // the bear staring and charging
       intro: ['assets/sounds/intro-girl.mp3', 1.0],             // the girl's welcome line at the start
+      hint: ['assets/sounds/hint-girl.mp3', 1.0],               // her "truffle nearby" hint near the first truffle
     };
     this.samples = {};
     await Promise.all(Object.entries(files).map(async ([name, [url, gain]]) => {
