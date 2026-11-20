@@ -201,6 +201,10 @@ World and look
   **removed at the owner's request**.
 - The barn (pastel red, cream roof, white X doors) stands just behind the spawn point, doors facing it, in a tree-free
   meadow (`inClearing`).
+- Terrain (`baseHeight` in `noise.js`): gentle rolling ground plus extra relief (broad hills and smaller knolls and
+  hollows) added at the owner's request, "more curves and steepness, but not too much": median slope ~5°, rarely over
+  13°, max ~18° (about twice the original). The extra relief fades out within 18-40 m of the barn meadow so the barn
+  and spawn stay as they were.
 - Tree leaves never hang lower than `LEAF_CLEAR` 2 m above the highest ground under the canopy (the pig is 1.44 m
   to the ear tips), at the owner's request: low canopies are raised and their trunks stretched (`canopyLift`), without
   changing the random sequence, so the forest layout stays the same.

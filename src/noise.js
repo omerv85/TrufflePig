@@ -42,9 +42,14 @@ export const smoothstep = (a, b, x) => {
   return t * t * (3 - 2 * t);
 };
 
-// Gentle rolling meadow / forest floor, before streams are carved in.
+// Rolling forest floor, before streams are carved in: broad hills plus smaller knolls and
+// dips. The extra relief fades out round the barn meadow so the barn stays on gentle ground.
 export function baseHeight(x, z) {
-  return (fbm(x * 0.018, z * 0.018, 1, 3) - 0.5) * 5 + (fbm(x * 0.08, z * 0.08, 7, 2) - 0.5) * 0.6;
+  const gentle = (fbm(x * 0.018, z * 0.018, 1, 3) - 0.5) * 5 + (fbm(x * 0.08, z * 0.08, 7, 2) - 0.5) * 0.6;
+  const relief = (fbm(x * 0.012, z * 0.012, 3, 2) - 0.5) * 6   // broad hills
+    + (fbm(x * 0.042, z * 0.042, 5, 2) - 0.5) * 4;             // knolls and hollows
+  const dz = z - 4;
+  return gentle + relief * smoothstep(18, 40, Math.hypot(x, dz));
 }
 
 // ---------- streams ----------
