@@ -46,6 +46,10 @@ voice is recorded.
 - `src/barn.js`: the barn at the start point (`createBarn`), with a box collider.
 - `src/truffles.js`: the truffle hunt (`TruffleHunt`): mist particles, scent clouds, excitement, squeals, digging,
   the reward.
+- `src/dighole.js`: the holes the pig digs (`DigSite`, a pool of 12): a pit with real depth drawn through the ground
+  with the stencil buffer (an invisible `punch` disc marks the opening, then the `pit` bowl draws only there, ignoring
+  depth; the renderer is created with `stencil: true`), a lumpy rim of loose earth that follows the terrain, and clods
+  (`addClod`) that stay where flung dirt lands (`Particles.onLand`).
 - `src/birds.js`: songbirds on the forest floor (`Birds`): little flocks that hop and peck, and burst up and fly
   away when the pig comes close (`SCARE` 4.5 m + 1 m per m/s of pig speed), with the wing-flap recording.
 - `src/animals.js`: all forest animals on one algorithm (`Animals` manager, `Creature`): the `SPECIES` table (sizes,
@@ -231,7 +235,8 @@ Truffles (owner asked for them to be scarce, with a long trail to follow)
 - Excitement: nose up and sniffing the air, looking around, ears perked, faster tail wag, more frequent nose raises.
 - Digging starts automatically when the pig reaches the spot (`DIG_DIST`): it stops, turns to face it, digs for
   3.4 s (leans in with its rump up and wiggles, head rooting in the dirt, trotters scraping hard, ears flapping, tail
-  spinning, dirt flying, scratch sounds; the plume over that hole thins out), leaves a dug-earth patch; then the
+  spinning, dirt flying, scratch sounds; the plume over that hole thins out), the hole opens up, widens and
+  deepens, its rim builds up, and clods pile up around it where the dirt lands (`dighole.js`); then the
   truffle pops up above the pig's head and spins away, the pig does two happy hops, and the counter goes up. The
   camera cuts to the dig shot for all of it (see Camera; owner's request). Input is ignored while digging and for `DIGCAM_HOLD` after the pop; the camera then eases back.
 

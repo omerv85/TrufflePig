@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { terrainHeight, smoothstep } from './noise.js';
+import { DigSite } from './dighole.js';
 
 // ---------- tuning ----------
 const SCENT_RANGE = 75;   // the pig catches the scent (drifting clouds, rare squeals) this far out
@@ -78,7 +79,7 @@ class Particles {
   spawn(o) {
     const p = this.p[this.next];
     this.next = (this.next + 1) % this.max;
-    Object.assign(p, { alive: true, age: 0, grav: 0, drag: 0.4, dirt: false, cloud: false, smelled: false }, o);
+    Object.assign(p, { alive: true, age: 0, grav: 0, drag: 0.4, dirt: false, cloud: false, smelled: false, landed: false }, o);
   }
 
   update(dt) {
@@ -95,7 +96,10 @@ class Particles {
       p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt;
       if (p.dirt) {
         const g = terrainHeight(p.x, p.z) + 0.03;
-        if (p.y < g) { p.y = g; p.vx *= 0.3; p.vz *= 0.3; p.vy = 0; }
+        if (p.y < g) {
+          if (!p.landed && p.vy < 0) { p.landed = true; this.onLand?.(p); }
+          p.y = g; p.vx *= 0.3; p.vz *= 0.3; p.vy = 0;
+        }
       }
       const t = p.age / p.life;
       this.alpha[i] = p.dirt ? p.a * (1 - t * t * t) : p.a * Math.sin(Math.PI * t);
@@ -147,18 +151,13 @@ export class TruffleHunt {
     scene.add(this.prize);
     this.prizeT = -1;
 
-    // Little dug-up dirt patches left behind
-    this.holes = [];
-    const holeGeo = new THREE.CircleGeometry(0.42, 18).rotateX(-Math.PI / 2);
-    const holeMat = new THREE.MeshLambertMaterial({ color: '#a8846c', polygonOffset: true, polygonOffsetFactor: -2 });
-    for (let i = 0; i < 16; i++) {
-      const h = new THREE.Mesh(holeGeo, holeMat);
-      h.visible = false;
-      h.receiveShadow = true;
-      scene.add(h);
-      this.holes.push(h);
-    }
+    // Dug holes (with depth, a rim of loose earth and scattered clods) left behind
+    this.holes = Array.from({ length: 12 }, () => new DigSite(scene));
     this.nextHole = 0;
+    // flung dirt that lands near the hole being dug stays there as a clod
+    this.fx.onLand = (p) => {
+      if (this.digging && Math.random() < 0.4) this.hole.addClod(p.x, p.z, p.s0 * 0.42);
+    };
   }
 
   // New game: stop any dig, clear the dug patches and calm the pig down.
@@ -174,7 +173,7 @@ export class TruffleHunt {
     this.look = 0;
     this.lookAmt = 0;
     this.prize.visible = false;
-    for (const h of this.holes) h.visible = false;
+    for (const h of this.holes) h.hide();
     for (const p of this.fx.p) p.alive = false;
   }
 
@@ -245,6 +244,7 @@ export class TruffleHunt {
 
     this.updatePrize(dt);
     this.fx.update(dt);
+    this.hole?.update(dt);
   }
 
   whiff() {
@@ -298,9 +298,7 @@ export class TruffleHunt {
     this.strokeT = 0;
     const h = this.holes[this.nextHole];
     this.nextHole = (this.nextHole + 1) % this.holes.length;
-    h.position.set(t.x, terrainHeight(t.x, t.z) + 0.02, t.z);
-    h.scale.setScalar(0.01);
-    h.visible = true;
+    h.start(t.x, t.z);
     this.hole = h;
   }
 
@@ -308,7 +306,7 @@ export class TruffleHunt {
     const t = this.target;
     this.digT += dt;
     this.digPhase += dt * 16;
-    this.hole.scale.setScalar(Math.min(1, 0.2 + this.digT / DIG_TIME));
+    this.hole.setProgress(Math.min(1, this.digT / (DIG_TIME - 0.2)));
 
     // Each paw stroke: a scratch and a spray of dirt flung back past the pig.
     this.strokeT -= dt;
