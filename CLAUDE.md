@@ -96,6 +96,8 @@ the long one as it charges). The club's thump is synthesized (`thud`). The docil
   start" (`playIntro`). Generated with Microsoft's neural TTS voice en-GB-MaisieNeural via the `edge-tts` Python
   package (rate -8%, pitch +12Hz). `hint-girl.mp3`: the same voice saying "There's a truffle nearby! Follow the yellow
   mist!", played once per game when the pig first comes within `HINT_DIST` 22 m of a truffle (`truffles.js`, `hinted`).
+  `danger-girl.mp3`: the same voice and settings saying "Careful little pig! There's danger nearby.", played once per
+  game 1.2 s after the first wolf, bear, witch or troll comes into minimap range (`animals.js`, `warned`).
 - `share.jpg` (1200×630): the link-preview picture WhatsApp and others show (`og:image` in `index.html`). A real
   frame of the game (sunlit pig behind a tree with truffle mist, feather clouds) with "TrufflePig" and "Follow your nose
   to the truffles" drawn on top in Caveat. Made by rendering the scene at 1200×630 in the browser from a staged spot

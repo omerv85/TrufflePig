@@ -148,6 +148,11 @@ class Creature {
 
     // A predator coming into map range calls out through the trees.
     const inMap = dist < mgr.mapRange;
+    if (sp.danger && inMap && !this.inMap && !mgr.warned) {
+      // The first time in a game a predator shows on the map, the girl warns the pig (once its call has begun).
+      mgr.warned = true;
+      mgr.audio.playSample?.('danger', { when: 1.2 });
+    }
     if (sp.danger && inMap && !this.inMap && this.howlCool <= 0 && this.state === 'walk') {
       const s = sp.sounds.map;
       if (s.slice) mgr.audio.slice?.(s.name, { vol: s.vol, duration: s.slice, pan: this.pan(player), fade: 0.2 });
@@ -642,6 +647,7 @@ export class Animals {
     this.holes = [];
     for (const c of this.list) c.remove();
     this.list = [];
+    this.warned = false; // the girl's "danger nearby" warning has played this game
     this.slots = SLOTS.map((s) => ({ ...s, timer: s.first, c: null }));
   }
 

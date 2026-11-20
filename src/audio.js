@@ -494,6 +494,7 @@ export class Ambience {
       frog: ['assets/sounds/frog.mp3', 1.4],                   // the toad's croaks after the curse
       intro: ['assets/sounds/intro-girl.mp3', 1.0],             // the girl's welcome line at the start
       hint: ['assets/sounds/hint-girl.mp3', 1.0],               // her "truffle nearby" hint near the first truffle
+      danger: ['assets/sounds/danger-girl.mp3', 1.0],           // her warning when the first predator shows on the map
       wade: ['assets/sounds/walking-in-water.mp3', 2.2],
       trollIdle: ['assets/sounds/troll-idle.mp3', 1.0],        // the troll grumbling to itself, far off
       trollRoars: ['assets/sounds/troll-roars.mp3', 1.0],      // the troll roaring, close by        // splashing steps in a creek or a mud puddle
