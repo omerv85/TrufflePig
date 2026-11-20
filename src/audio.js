@@ -486,6 +486,9 @@ export class Ambience {
       growl: ['assets/sounds/wolf-growl.mp3', 1.3],
       bearGrowl: ['assets/sounds/bear-growl.mp3', 1.8],         // short growl as a bear comes into map range
       bearGrowling: ['assets/sounds/bear-growling.mp3', 0.6],   // the bear staring and charging
+      witchNear: ['assets/sounds/witch-near.mp3', 1.6],        // a witch coming into map range
+      witchStaring: ['assets/sounds/witch-staring.mp3', 1.0],  // the witch staring the pig down
+      frog: ['assets/sounds/frog.mp3', 1.4],                   // the toad's croaks after the curse
       intro: ['assets/sounds/intro-girl.mp3', 1.0],             // the girl's welcome line at the start
       hint: ['assets/sounds/hint-girl.mp3', 1.0],               // her "truffle nearby" hint near the first truffle
     };
@@ -559,6 +562,89 @@ export class Ambience {
     const last = Math.min(end ?? Infinity, s.buffer.duration) - 0.1;
     const offset = rand(0, Math.max(0, last - duration));
     return this.playSample(name, { vol, pan, offset, duration, fade, rate: rate ?? rand(0.95, 1.03) });
+  }
+
+  // The witch's spell: a glittering rising shimmer as she raises her wand (len seconds).
+  spell(len = 1.1) {
+    if (!this.ctx) return;
+    const ctx = this.ctx, t0 = ctx.currentTime + 0.02;
+    for (let i = 0; i < 14; i++) {
+      const t = t0 + (i / 14) * len * 0.95;
+      const f = 700 * Math.pow(2, (i / 14) * 2) * rand(0.97, 1.03);
+      const o = ctx.createOscillator();
+      o.type = i % 2 ? 'triangle' : 'sine';
+      o.frequency.setValueAtTime(f, t);
+      o.frequency.exponentialRampToValueAtTime(f * 1.5, t + 0.25);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0, t);
+      g.gain.linearRampToValueAtTime(0.07, t + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0005, t + 0.5);
+      const p = ctx.createStereoPanner();
+      p.pan.value = rand(-0.4, 0.4);
+      o.connect(g).connect(p);
+      p.connect(this.master);
+      p.connect(this.reverb);
+      o.start(t);
+      o.stop(t + 0.55);
+    }
+    // a whoosh building under it
+    const { g } = this.noiseHit(this.pink, len, { type: 'bandpass', freq: 1800, q: 0.8, vol: 0.12, attack: len * 0.9 });
+    g.connect(this.reverb);
+  }
+
+  // The curse lands: a soft smoky "poof" and a descending wobble.
+  poof() {
+    if (!this.ctx) return;
+    const ctx = this.ctx;
+    const { t, flt } = this.noiseHit(this.brown, 0.9, { type: 'lowpass', freq: 1400, q: 0.6, vol: 0.9, attack: 0.01 });
+    flt.frequency.setValueAtTime(2400, t);
+    flt.frequency.exponentialRampToValueAtTime(250, t + 0.8);
+    this.noiseHit(this.white, 0.35, { type: 'highpass', freq: 3000, q: 0.5, vol: 0.12, attack: 0.005 });
+    const o = ctx.createOscillator();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(900, t);
+    o.frequency.exponentialRampToValueAtTime(160, t + 0.7);
+    const lfo = ctx.createOscillator();
+    lfo.frequency.value = 14;
+    const lg = ctx.createGain();
+    lg.gain.value = 40;
+    lfo.connect(lg).connect(o.frequency);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.12, t + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0005, t + 0.75);
+    o.connect(g);
+    g.connect(this.master);
+    g.connect(this.reverb);
+    o.start(t); lfo.start(t);
+    o.stop(t + 0.8); lfo.stop(t + 0.8);
+  }
+
+  // The toad croaks: one croak cut from the frog recording (i picks which); synthesized if it failed to load.
+  croak(i = 0, vol = 0.9) {
+    if (!this.ctx) return;
+    const at = [0.72, 1.45, 2.25][i % 3];
+    if (this.playSample('frog', { offset: at, duration: 0.42, fade: 0.03, vol, rate: rand(0.97, 1.05) })) return;
+    vol = 0.25;
+    const ctx = this.ctx, t = ctx.currentTime + 0.01;
+    const o = ctx.createOscillator();
+    o.type = 'sawtooth';
+    o.frequency.setValueAtTime(190, t);
+    o.frequency.linearRampToValueAtTime(130, t + 0.18);
+    const am = ctx.createOscillator();
+    am.frequency.value = 38;
+    const ag = ctx.createGain();
+    ag.gain.value = 0.5;
+    const flt = ctx.createBiquadFilter();
+    flt.type = 'bandpass'; flt.frequency.value = 600; flt.Q.value = 2;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(vol, t + 0.02);
+    g.gain.linearRampToValueAtTime(0, t + 0.2);
+    am.connect(ag).connect(g.gain);
+    o.connect(flt).connect(g).connect(this.master);
+    o.start(t); am.start(t);
+    o.stop(t + 0.22); am.stop(t + 0.22);
   }
 
   // A startled flock bursting up into the air.

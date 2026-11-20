@@ -19,10 +19,12 @@ const DIRT = [0.55, 0.42, 0.34];
 // All mist puffs and dirt clods, drawn as soft round camera-facing squares sized in metres.
 // (They used to be GL point sprites, but phone GPUs cap point size, so close-up mist shrank
 // and faded on phones while desktops showed it in full.)
+// (Also used for the witch's spell sparkles and smoke: per-particle colour `c`; `puff` makes it
+// appear at once and then fade, instead of swelling in and out.)
 // Phones also get stronger mist: small screens and daylight glare wash out the faint yellow.
 const MIST_BOOST = matchMedia('(pointer: coarse)').matches ? 1.4 : 1.0;
 
-class Particles {
+export class Particles {
   constructor(scene, max = 260) {
     this.max = max;
     this.p = Array.from({ length: max }, () => ({ alive: false }));
@@ -79,7 +81,7 @@ class Particles {
   spawn(o) {
     const p = this.p[this.next];
     this.next = (this.next + 1) % this.max;
-    Object.assign(p, { alive: true, age: 0, grav: 0, drag: 0.4, dirt: false, cloud: false, smelled: false, landed: false }, o);
+    Object.assign(p, { alive: true, age: 0, grav: 0, drag: 0.4, dirt: false, cloud: false, smelled: false, landed: false, c: null, puff: false }, o);
   }
 
   update(dt) {
@@ -102,10 +104,10 @@ class Particles {
         }
       }
       const t = p.age / p.life;
-      this.alpha[i] = p.dirt ? p.a * (1 - t * t * t) : p.a * Math.sin(Math.PI * t);
+      this.alpha[i] = p.dirt ? p.a * (1 - t * t * t) : p.puff ? p.a * Math.min(1, t * 14) * (1 - t) ** 1.6 : p.a * Math.sin(Math.PI * t);
       this.size[i] = p.s0 + (p.s1 - p.s0) * t;
       this.pos[i * 3] = p.x; this.pos[i * 3 + 1] = p.y; this.pos[i * 3 + 2] = p.z;
-      const c = p.dirt ? DIRT : MIST;
+      const c = p.c || (p.dirt ? DIRT : MIST);
       this.col[i * 3] = c[0]; this.col[i * 3 + 1] = c[1]; this.col[i * 3 + 2] = c[2];
     }
     for (const n of ['iOffset', 'iSize', 'iAlpha', 'iColor']) this.geo.attributes[n].needsUpdate = true;

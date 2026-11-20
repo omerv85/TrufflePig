@@ -6,6 +6,7 @@ import { Hud, MAP_RANGE } from './hud.js';
 import { TruffleHunt } from './truffles.js';
 import { Birds } from './birds.js';
 import { Animals } from './animals.js';
+import { Curse } from './curse.js';
 import { createPig } from './pig.js';
 import { Joystick } from './joystick.js';
 import { Ambience } from './audio.js';
@@ -429,12 +430,12 @@ fsBtn.addEventListener('click', enterFullscreen);
 // on desktop) with a message saying how many truffles were found and inviting the friend to beat it.
 const GAME_URL = 'https://trufflepig.o-vertman.workers.dev/';
 const plural = (n) => `${n} truffle${n === 1 ? '' : 's'}`;
-const KILLER = { wolf: ['a wolf', '🐺'], bear: ['a bear', '🐻'] };
-// caughtBy: the kind of animal that ended the game ('wolf' / 'bear'), or null from the pause menu.
+const KILLER = { wolf: ['a wolf got me', '🐺'], bear: ['a bear got me', '🐻'], witch: ['a witch turned me into a toad', '🐸'] };
+// caughtBy: what ended the game ('wolf' / 'bear' / 'witch'), or null from the pause menu.
 function shareText(n, caughtBy) {
   const k = KILLER[caughtBy];
   const found = k
-    ? (n === 0 ? `${k[0][0].toUpperCase() + k[0].slice(1)} got me in the forest in TrufflePig 🐷${k[1]}` : `I found ${plural(n)} in TrufflePig 🐷 before ${k[0]} got me ${k[1]}`)
+    ? (n === 0 ? `${k[0][0].toUpperCase() + k[0].slice(1)} in the forest in TrufflePig 🐷${k[1]}` : `I found ${plural(n)} in TrufflePig 🐷 before ${k[0]} ${k[1]}`)
     : (n === 0 ? "I'm hunting for truffles in the forest in TrufflePig 🐷" : `I found ${plural(n)} in the forest in TrufflePig 🐷`);
   return `${found}
 How many can you find? ${GAME_URL}`;
@@ -468,12 +469,14 @@ const hunt = new TruffleHunt({
 // ---------- birds on the forest floor ----------
 const birds = new Birds({ scene, forest, audio });
 
-// ---------- forest animals: wolf and bear (danger, and the way the game ends), deer, goat, squirrel, moose ----------
+// ---------- forest animals: wolf, bear and witch (danger, and the way the game ends), deer, goat, squirrel, moose ----------
 const flashEl = document.getElementById('flash');
 const gameOverEl = document.getElementById('gameover');
 let knock = 0;      // 0..1 the pig bowled over by a wolf or bear
 let knocked = false;
 let camPull = 0;    // 0..1 camera pulls back to show the attack
+const curse = new Curse({ scene, audio }); // the witch's spell: smoke, and a toad where the pig was
+let toadCam = 0;    // 0..1 camera tips down to watch the toad
 const animals = new Animals({
   scene, forest, audio, barn: BARN_POS, mapRange: MAP_RANGE,
   onPounce: () => {
@@ -483,13 +486,18 @@ const animals = new Animals({
     flashEl.classList.add('hit');
     audio.playSample('porco', { offset: 0.1, duration: 0.7, rate: 1.25, vol: 1.1, fade: 0.04 }); // a frightened squeal
   },
+  onCastTick: (witch, k, dt) => curse.casting(witch, k, player, dt),
+  onCurse: () => {
+    audio.playSample('porco', { offset: 0.1, duration: 0.35, rate: 1.3, vol: 1.0, fade: 0.03 }); // a squeal, cut short
+    curse.start(player);
+  },
   onGameOver: (kind) => showGameOver(kind),
 });
 
 function showGameOver(kind) {
   gameOver = true;
   caughtBy = kind;
-  document.getElementById('go-why').textContent = `The ${kind} got you!`;
+  document.getElementById('go-why').textContent = kind === 'witch' ? 'The witch turned you into a toad!' : `The ${kind} got you!`;
   const n = hud.truffles;
   document.getElementById('go-count').textContent = n;
   document.getElementById('go-word').textContent = n === 1 ? 'truffle' : 'truffles';
@@ -508,6 +516,9 @@ document.getElementById('new-game').addEventListener('click', () => {
   player.pos.set(0, terrainHeight(0, 0), 0);
   Object.assign(player, { heading: 0, speed: 0, turnVel: 0, pitch: 0 });
   knock = 0; knocked = false; camPull = 0; digCam = 0; digCamOn = false;
+  curse.reset();
+  toadCam = 0;
+  pig.root.visible = true;
   snortT = -1; nextSnort = 3 + Math.random() * 3;
   flashEl.classList.remove('hit');
   forest.update(player.pos, Infinity);
@@ -626,6 +637,13 @@ function cameraTargets(outPos, outLook) {
     _dPos.set(p.x + _fwd.x * 0.35, p.y + 0.5 + pop, p.z + _fwd.z * 0.35);
     outLook.lerp(_dPos, s);
   }
+  if (toadCam > 0) {
+    // cursed: look down at the toad hopping in the grass, the witch still in view beyond
+    const k = smooth(Math.min(1, toadCam)), T = curse.toad.root.position;
+    _dPos.set(T.x + _fwd.x * 2.0, terrainHeight(T.x, T.z) + 0.4, T.z + _fwd.z * 2.0); // ground level: the hops show
+    outLook.lerp(_dPos, k);
+    outPos.y -= 0.35 * k;
+  }
 }
 cameraTargets(camPos, camLook);
 
@@ -662,15 +680,17 @@ function update(dt) {
   if (wantDigCam) digCamT += dt;
   digCam = damp(digCam, wantDigCam ? 1 : 0, wantDigCam ? 2.4 : 1.8, dt);
 
-  // A wolf or bear is charging: the pig freezes and turns to face it.
+  // A wolf or bear is charging (or the witch is casting): the pig freezes and turns to face it.
   if (attacked) {
     targetSpeed = 0;
     const w = attacker.pos;
     const want = Math.atan2(-(w.x - player.pos.x), -(w.z - player.pos.z));
     const diff = Math.atan2(Math.sin(want - player.heading), Math.cos(want - player.heading));
-    targetTurn = knocked ? 0 : THREE.MathUtils.clamp(diff * 8, -6, 6);
+    targetTurn = knocked || curse.active ? 0 : THREE.MathUtils.clamp(diff * 8, -6, 6);
   }
-  camPull = damp(camPull, attacked ? 1 : 0, 3, dt);
+  // (only a little for the witch, so her spell and the toad are seen up close)
+  camPull = damp(camPull, attacked ? (attacker.sp.caster ? 0.3 : 1) : 0, 3, dt);
+  toadCam = damp(toadCam, curse.active ? 1 : 0, 3, dt);
 
   // Wading through a stream slows the pig down.
   const depth = waterDepth(player.pos.x, player.pos.z);
@@ -730,6 +750,8 @@ function update(dt) {
   forest.update(player.pos, 2);
   if (started && !attacked) hunt.update(dt, player);
   if (started) animals.update(dt, player);
+  curse.update(dt);
+  if (curse.active && curse.t > 0.12) pig.root.visible = false; // hidden in the smoke: now a toad
   birds.update(dt, player, started);
 }
 
@@ -788,4 +810,4 @@ function frame(now) {
 requestAnimationFrame(frame);
 
 // For debugging in the console.
-window.__game = { player, forest, camera, renderer, scene, audio, hud, hunt, birds, animals, setPaused, sky, clock, snortNow: () => { nextSnort = 0; } };
+window.__game = { player, forest, camera, renderer, scene, audio, hud, hunt, birds, animals, curse, pig, setPaused, sky, clock, snortNow: () => { nextSnort = 0; } };

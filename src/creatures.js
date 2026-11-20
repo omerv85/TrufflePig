@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 
-// Low-poly forest animals built from primitives: the wolf and bear (dangerous), and the deer,
+// Low-poly forest animals built from primitives: the wolf, bear and witch (dangerous), and the deer,
 // goat, squirrel and moose (docile). Each faces +Z with its feet at y = 0 and returns the parts
 // the animation in animals.js moves: body (crouches, pitches), neck > head (> jaw), ears,
 // legs (pivots at hip height `hip`), tail and hackles. Missing parts are empty groups.
@@ -154,6 +154,77 @@ function bear() {
   return P;
 }
 
+// The witch stands upright: a long robe that sways as she walks (`body`), boots that step out
+// from under the hem (`legs`), a head with a tall crooked hat, and a right arm (`arm`) holding a
+// wand whose tip glows (`tip`, its own material so it can brighten as she casts).
+function witch() {
+  const robe = '#6b4f8c', robeDark = '#4f3a6a', skin = '#b9d79a', skinDark = '#93b878';
+  const hat = '#3a2f48', band = '#c86f9a', hair = '#e8a15a', boot = '#2e2636', wood = '#6b4a36';
+  const P = base();
+  const robeGeo = new THREE.CylinderGeometry(0.17, 0.42, 1.05, 8, 1, true);
+  P.body.add(
+    m(robeGeo, robe, [0, 0.62, 0]),                              // long flared robe
+    m(CYL, robeDark, [0, 0.12, 0], [0.42, 0.06, 0.42]),          // hem
+    m(BALL, robe, [0, 1.17, 0], [0.22, 0.17, 0.18]),             // shoulders
+    m(CYL, band, [0, 0.96, 0], [0.19, 0.05, 0.19]),              // sash
+  );
+  // ragged cape down her back
+  for (let i = 0; i < 5; i++) {
+    const a = -0.8 + i * 0.4;
+    P.body.add(m(CONE, robeDark, [Math.sin(a) * 0.2, 0.75, -0.12 - Math.cos(a) * 0.12], [0.12, 0.85, 0.05], [0.15, a, 0]));
+  }
+  P.neck = grp(P.body, [0, 1.28, 0.02]);
+  const head = P.head = grp(P.neck, [0, 0.12, 0]);
+  head.add(
+    m(BALL, skin, [0, 0, 0], [0.15, 0.16, 0.15]),                 // face
+    m(CONE, skinDark, [0, -0.01, 0.2], [0.035, 0.14, 0.035], [1.75, 0, 0]),   // long hooked nose
+    m(BALL, skinDark, [0, -0.055, 0.265], 0.02),                  // wart on the tip
+    m(BALL, skinDark, [0, -0.13, 0.09], [0.05, 0.05, 0.05]),      // pointed chin
+    m(BOX, '#5a2f45', [0, -0.08, 0.135], [0.08, 0.015, 0.02]),    // thin smile
+    m(BALL, wolfEye, [0.055, 0.035, 0.13], 0.022),                // glowing yellow eyes
+    m(BALL, wolfEye, [-0.055, 0.035, 0.13], 0.022),
+    m(BOX, hat, [0.055, 0.07, 0.135], [0.06, 0.015, 0.02], [0, 0, -0.35]),   // arched brows
+    m(BOX, hat, [-0.055, 0.07, 0.135], [0.06, 0.015, 0.02], [0, 0, 0.35]),
+  );
+  // straggly hair falling to the shoulders
+  for (let i = 0; i < 7; i++) {
+    const a = Math.PI * 0.55 + i * (Math.PI * 0.9 / 6);
+    head.add(m(CONE, hair, [Math.sin(a) * 0.14, -0.12, Math.cos(a) * 0.12], [0.05, 0.3, 0.04], [Math.PI + Math.cos(a) * 0.3, 0, -Math.sin(a) * 0.3]));
+  }
+  // tall pointed hat with a wide brim and a bend near the tip
+  const hatG = grp(head, [0, 0.1, -0.01], [-0.12, 0, 0]);
+  hatG.add(
+    m(CYL, hat, [0, 0, 0], [0.34, 0.025, 0.34]),
+    m(CYL, band, [0, 0.05, 0], [0.155, 0.06, 0.155]),
+    m(new THREE.CylinderGeometry(0.06, 0.16, 0.34, 8), hat, [0, 0.2, 0]),
+  );
+  const tipG = grp(hatG, [0, 0.36, 0], [-0.55, 0, 0]);
+  tipG.add(m(CONE, hat, [0, 0.11, 0], [0.065, 0.24, 0.065]));
+  // left arm hangs at her side; the right arm holds the wand and swings up to point it
+  const armL = grp(P.body, [-0.25, 1.17, 0.03], [0, 0, 0.22]);
+  armL.add(m(BALL, robe, [0, -0.2, 0], [0.065, 0.22, 0.065]), m(BALL, skin, [0, -0.43, 0], 0.05));
+  const arm = P.arm = grp(P.body, [0.25, 1.17, 0.03], [0, 0, -0.22]);
+  arm.add(m(BALL, robe, [0, -0.2, 0], [0.065, 0.22, 0.065]), m(BALL, skin, [0, -0.43, 0], 0.05));
+  const wand = grp(arm, [0, -0.44, 0.02], [Math.PI / 2, 0, 0]);   // held pointing forward from the fist
+  wand.add(m(CYL, wood, [0, 0.17, 0], [0.014, 0.36, 0.014]));
+  P.tipMat = new THREE.MeshBasicMaterial({ color: '#b7ffa0' });
+  P.tip = m(new THREE.IcosahedronGeometry(1, 1), P.tipMat, [0, 0.36, 0], 0.03);
+  wand.add(P.tip);
+  P.wand = wand;
+  P.tail = grp(P.body);
+  // boots poke out from under the hem and step as she walks
+  P.legs = [-1, 1].map((s) => {
+    const leg = grp(P.root, [s * 0.11, 0.2, 0]);
+    leg.add(m(CYL, boot, [0, -0.1, 0], [0.05, 0.2, 0.05]), m(BALL, boot, [0, -0.17, 0.07], [0.06, 0.045, 0.11]));
+    const toe = m(CONE, boot, [0, -0.15, 0.2], [0.03, 0.09, 0.03], [1.9, 0, 0]);   // curled pointy toe
+    leg.add(toe);
+    leg.userData = { front: true, side: s };
+    return leg;
+  });
+  P.hip = 0.2;
+  return P;
+}
+
 // ---------- docile ----------
 function deer() {
   const fur = '#b98a5e', light = '#f3e6d2', dark = '#5e4434', antler = '#eadbc0';
@@ -299,11 +370,11 @@ function squirrel() {
   return P;
 }
 
-export const MODELS = { wolf, bear, deer, goat, moose, squirrel };
+export const MODELS = { wolf, bear, witch, deer, goat, moose, squirrel };
 
 export function createCreature(kind, size) {
   const P = MODELS[kind]();
-  P.root.traverse((o) => { if (o.isMesh && o.material !== wolfEye) o.castShadow = true; });
+  P.root.traverse((o) => { if (o.isMesh && o.material !== wolfEye && o.material !== P.tipMat) o.castShadow = true; });
   P.root.scale.setScalar(size);
   return P;
 }

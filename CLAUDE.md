@@ -20,8 +20,8 @@ hidden in the ground beside tree trunks, digs them up, and can find its way back
 using the minimap. **Phones play in landscape** (an upright phone gets a "Turn your phone sideways" screen); test at
 812×375. Desktop works with mouse or keyboard.
 
-Danger: a **wolf** and a **bear** prowl the forest. Getting too close to either ends the game (game-over screen with
-Share and New game). Docile animals (deer, goat, squirrel, moose) wander too: they stare, then flee.
+Danger: a **wolf**, a **bear** and a **witch** prowl the forest (never more than two of them around at once). Getting
+too close to any of them ends the game (game-over screen with Share and New game). Docile animals (deer, goat, squirrel, moose) wander too: they stare, then flee.
 
 ## Files
 
@@ -53,9 +53,15 @@ voice is recorded.
 - `src/birds.js`: songbirds on the forest floor (`Birds`): little flocks that hop and peck, and burst up and fly
   away when the pig comes close (`SCARE` 4.5 m + 1 m per m/s of pig speed), with the wing-flap recording.
 - `src/animals.js`: all forest animals on one algorithm (`Animals` manager, `Creature`): the `SPECIES` table (sizes,
-  speeds, stare/attack/calm distances, spawn distances, sounds), spawn `SLOTS`, walk/stare/attack/flee states, growls.
+  speeds, stare/attack/calm distances, spawn distances, sounds), spawn `SLOTS`, walk/stare/attack/flee states, growls,
+  the witch's `cast` state and her own animation (`animateWitch`), and the `MAX_DANGER` 2 cap.
+- `src/curse.js`: the witch's curse (`Curse`): green sparkles from her wand tip, the smoke flash, and the toad
+  (`createToad`) that hops twice where the pig was. Uses the `Particles` class exported from `truffles.js` (per-particle
+  colour `c`, `puff` alpha curve).
 - `src/creatures.js`: the animal models from primitives (`createCreature(kind, size)`): wolf (grey, yellow eyes, broad
-  chest, mane, shaggy cheek ruffs), bear (brown, shoulder hump, heavy cheeks), deer (antlers, white tail), goat (white,
+  chest, mane, shaggy cheek ruffs), bear (brown, shoulder hump, heavy cheeks), witch (upright: purple flared robe and
+  ragged cape, pale-green face with hooked nose and yellow eyes, orange hair, tall bent black hat with a pink band,
+  pointy boots, a wand with a glowing green tip, `arm`/`wand`/`tip`/`tipMat`), deer (antlers, white tail), goat (white,
   horns, beard), squirrel (bushy tail), moose (palmate antlers, dewlap).
 - `src/audio.js`: `Ambience`: synthesized breeze, leaf gusts, insect drone, cicadas, birds, brook, splashes,
   footsteps, digging, chime; recorded pig calls (`loadSamples`, `playSample`).
@@ -68,7 +74,11 @@ voice is recorded.
   slices chained while the wolf stares, and a louder sped-up slice as the snarl when it charges). Bear sounds:
   `bear-growl.mp3` (universfield "bear growl", 1.3 s, played once when a bear comes into minimap range) and
   `bear-growling.mp3` (gargamel10 "growling bear", 6.1 s, sound only in the first 5 s; slices while it stares and as
-  it charges). The docile animals are silent (no recordings yet). `intro-girl.mp3`: a little British girl saying
+  it charges). Witch sounds (owner-supplied): `witch-near.mp3` (3.1 s, played once when a witch comes into minimap range)
+and `witch-staring.mp3` (8.1 s, voice in the first ~5 s; the first 5.6 s played whole when she starts staring, again
+after a 2.5 s gap while she keeps staring). `frog.mp3` (owner-supplied, 22.9 s of croaks about every 0.7 s): single
+croaks cut from it (offsets 0.72 / 1.45 / 2.25 s, `croak(i)`) as the smoke clears and on each of the toad's hops. Her
+spell shimmer and the smoke "poof" are synthesized (`spell`, `poof` in `audio.js`). The docile animals are silent (no recordings yet). `intro-girl.mp3`: a little British girl saying
   "Finding truffles is hard... but I bet you can do it! Just follow the yellow mist!", played once 0.8 s after "Tap to
   start" (`playIntro`). Generated with Microsoft's neural TTS voice en-GB-MaisieNeural via the `edge-tts` Python
   package (rate -8%, pitch +12Hz). `hint-girl.mp3`: the same voice saying "There's a truffle nearby! Follow the yellow
@@ -114,8 +124,9 @@ Owner preferences:
   `window.__game = { player, forest, camera, renderer, scene, audio, hud, hunt, birds, animals, setPaused, sky, snortNow }`, e.g. teleport with `player.pos.set(...)`,
   turn with `player.heading`, find truffles with `[...forest.nearbyTruffles(x, z, range)]`, set the counter with
   `hud.setTruffles(n)`, trigger a nose raise with `snortNow()`, put an animal anywhere with
-  `animals.spawnAt('bear', x, z, player)` (any kind; replaces the one in its slot). A wolf/bear within 26 m stares,
-  within 12 m attacks. The game must be started for animals to move. Modules can be imported directly
+  `animals.spawnAt('bear', x, z, player)` (any kind; replaces the one in its slot, ignores the 2-predator cap). A
+  wolf/bear within 26 m stares, within 12 m attacks; a witch stares within 26 m and casts within 9 m. `__game.curse`
+  and `__game.pig` are exposed too. The game must be started for animals to move. Modules can be imported directly
   (`await import('/src/noise.js')`) for checks such as `streamDist`.
 - If the browser pane is hidden, `requestAnimationFrame` slows or stops, so timed checks see stale state. For logic,
   step it by hand instead, e.g. `for (...) hunt.update(1/30, player)`. That's how the scent trail was verified.
@@ -146,11 +157,14 @@ Owner preferences:
 - Truffle hunt (`truffles.js`): constants at the top (`SCENT_RANGE`, `WISP_RANGE`, `NEAR`, `DIG_DIST`, `DIG_TIME`).
   `excite` 0..1 (closeness to the nearest truffle, ^1.6, smoothed) drives the pig's body language, sound choice and
   frequency, and cloud frequency/strength.
-- Animals (`animals.js`): states `walk` → `alert` → `windup` → `run` → `leap` → `done` (wolf, bear) or `walk` → `alert`
-  → `flee` (docile). `animals.attacker` is the one attacking (only one at a time; another predator keeps staring).
+- Animals (`animals.js`): states `walk` → `alert` → `windup` → `run` → `leap` → `done` (wolf, bear), `walk` → `alert`
+  → `cast` → `done` (witch) or `walk` → `alert` → `flee` (docile). `animals.attacker` is the one attacking (only one at a time; another predator keeps staring).
   While attacking, `main.js` ignores input, turns the pig to face it, pulls the camera back (`camPull`), skips the truffle hunt, knocks
   the pig onto its side at the pounce (`knock`), then `showGameOver()` freezes the world (`gameOver` is part of
-  `halted()`). New game removes all animals and resets the hunt, counter, collected truffles and puts the pig back at the barn.
+  `halted()`). For the witch, `onCastTick` streams sparkles while she casts, `onCurse` starts the curse (a squeal cut
+  short, smoke, the pig hidden after 0.12 s, the toad), `camPull` only goes to 0.3 and `toadCam` tips the camera down to
+  watch the toad (aimed at ground level so the hops show); game over 2.9 s after the curse. New game removes all animals, resets the hunt, counter, collected
+  truffles and the curse (pig visible again, toad hidden), and puts the pig back at the barn.
 
 ## Design decisions already made (don't reverse without asking)
 
@@ -204,10 +218,13 @@ HUD
 - No share button during play (**moved into the pause menu and the game-over screen at the owner's request**). It
   opens `wa.me` with "I found N truffles in the forest in TrufflePig 🐷 / How many can you find? <game link>"; from
   the game-over screen "I found N truffles in TrufflePig 🐷 before a wolf got me 🐺 / ..." or "... before a bear got me
-  🐻" (with 0 truffles: "A bear got me in the forest ..."; `shareText` in `main.js`).
-- Game over: dark reddish wash, grey "Game over" banner, "The wolf got you!" / "The bear got you!", "You found N truffles", Share and
+  🐻" / "... before a witch turned me into a toad 🐸" (with 0 truffles: "A bear got me in the forest ..."; `shareText` in
+  `main.js`).
+- Game over: dark reddish wash, grey "Game over" banner, "The wolf got you!" / "The bear got you!" / "The witch turned you
+  into a toad!", "You found N truffles", Share and
   New game. The pause button is hidden and Escape/P do nothing while it's up.
-- Wolf and bear on the minimap: grey wolf head with yellow eyes / brown bear head with round ears, only while it's inside the map; a pulsing red glow behind it
+- Wolf, bear and witch on the minimap: grey wolf head with yellow eyes / brown bear head with round ears / green witch
+  face under a purple pointed hat, only while it's inside the map; a pulsing red glow behind it
   once it's staring or attacking.
 - Speech bubble over the pig: only "squee!" / "squee! squee!" when very close to a truffle. The "sniff sniff"
   bubble on the nose raise was **removed at the owner's request**.
@@ -251,9 +268,17 @@ Birds
   sound (panned and quieter with distance) and is removed after 4 s of flight.
 
 Animals (the owner's design)
-- All animals use the same algorithm. At most one wolf, one bear and one docile animal (deer, goat, squirrel or moose,
-  picked at random, the squirrel half the time) at a time; a wolf and a bear can be around together. They keep apart: a new animal never appears
+- All animals use the same algorithm. At most one wolf, one bear, one witch and one docile animal (deer, goat, squirrel or moose,
+  picked at random, the squirrel half the time) at a time, and **never more than two of the three dangerous ones**
+  (`MAX_DANGER`, owner's request): a predator whose timer is due while two are around waits 8-15 s and tries again. They keep apart: a new animal never appears
   within `MIN_SEP` 45 m of another, and walking animals steer away from each other inside `KEEP_APART` 35 m.
+- Witch (owner's design): appears and walks like the wolf and bear (first after 110 s, then 35-70 s after the last left).
+  **"witch near"** when she comes into map range, **"witch staring"** when she stops to stare (within 26 m: she turns
+  to the pig, leans in, lifts her wand, its tip glowing). Within 9 m (closer than the wolf's 12 so the spell is seen
+  up close) she doesn't charge: she raises the wand overhead with a glittering shimmer and jabs it at the pig, green
+  sparkles stream at it, a quick lilac smoke flash hides the pig, and as it clears a green toad (bulging eyes, pink
+  cheeks) sits where the pig was, facing the camera, and croaks; it makes two high hops (`HOP_HEIGHT` 0.8 m, raised at
+  the owner's request; to one side, then the other), croaking on each, and the game ends.
 - Bear: same as the wolf, bigger and brown, first after 75 s (then 35-70 s after the last left). **"bear growl"** when it
   comes into map range, **"growling bear"** while it stares and as it charges. Bear head on the map. "The bear got
   you!" and "a bear got me 🐻" in the share text.

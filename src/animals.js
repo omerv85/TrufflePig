@@ -6,9 +6,11 @@ import { createCreature } from './creatures.js';
 // and stare. Closer still:
 //  - dangerous ones (wolf, bear) charge, leap over the pig, and the game is over. They show on
 //    the minimap and call out (howl / growl) as they come into map range, and growl while staring.
+//    The witch doesn't charge: she raises her wand and curses the pig into a toad (main.js).
 //  - docile ones (deer, goat, moose) turn and flee. The squirrel dashes to the nearest tree,
 //    scurries up the trunk into the leaves and is gone. Silent, and not on the map.
-// At most one wolf, one bear and one docile animal are around at a time, and they keep apart.
+// At most one wolf, one bear, one witch and one docile animal are around at a time (and never more
+// than MAX_DANGER of the dangerous ones), and they keep apart.
 
 // ---------- tuning ----------
 const MIN_SEP = 45;        // a new animal never appears this close to another one
@@ -17,6 +19,8 @@ const LEAP_START = 3.4;    // metres from the pig where a charging predator leap
 const LEAP_TIME = 0.62;
 const CLIMB_SPEED = 2.6;   // m/s up a trunk (squirrel)
 const TREE_SEARCH = 22;    // a squirrel looks for a tree this close
+const MAX_DANGER = 2;      // dangerous animals around at once (of wolf, bear, witch)
+const CAST_TIME = 1.1;     // the witch raises her wand, then the curse hits
 
 // map: sound as it comes into minimap range. stare: growl slices while staring (end = last usable
 // second of the recording). charge: the snarl as it charges.
@@ -39,16 +43,26 @@ export const SPECIES = {
       charge: { name: 'bearGrowling', vol: 1.5, rate: 0.95, duration: 2.4, end: 5.0 },
     },
   },
+  witch: {
+    danger: true, caster: true, size: 1.0, walk: 0.9, alert: 26, close: 9, calm: 36,
+    spawn: [86, 96], barnKeep: 40,
+    sounds: {
+      map: { name: 'witchNear', vol: 1 },
+      // the whole staring clip (5 s of voice), again after a pause while she keeps staring
+      stare: { name: 'witchStaring', vol: 0.9, volClose: 0.3, whole: 5.6, gap: 2.5 },
+    },
+  },
   deer: { size: 1.0, walk: 1.2, run: 8, alert: 24, close: 12, calm: 34, spawn: [75, 90], barnKeep: 20 },
   goat: { size: 1.0, walk: 0.9, run: 6.5, alert: 16, close: 8, calm: 26, spawn: [75, 90], barnKeep: 20 },
   moose: { size: 1.1, walk: 1.0, run: 6.5, alert: 24, close: 12, calm: 34, spawn: [75, 90], barnKeep: 20 },
   squirrel: { size: 1.8, walk: 0.8, run: 5, alert: 10, close: 5, calm: 18, spawn: [55, 70], barnKeep: 15, hop: true, climbs: true },
 };
 
-// One wolf, one bear, one docile animal at most. first: seconds of play before the first one.
+// One wolf, one bear, one witch, one docile animal at most. first: seconds of play before the first one.
 const SLOTS = [
   { kinds: ['wolf'], first: 35, respawn: [25, 50] },
   { kinds: ['bear'], first: 75, respawn: [35, 70] },
+  { kinds: ['witch'], first: 110, respawn: [35, 70] },
   // squirrels listed three times: half of the docile animals are squirrels
   { kinds: ['deer', 'goat', 'squirrel', 'squirrel', 'squirrel', 'moose'], first: 12, respawn: [8, 20] },
 ];
@@ -72,7 +86,7 @@ class Creature {
     this.gait = 0;
     this.snarl = 0;                // 0..1 snarl pose (predators)
     this.look = 0;                 // 0..1 alert head-up pose (docile)
-    this.state = 'walk';           // walk | alert | windup | run | leap | done | flee | totree | climb
+    this.state = 'walk';           // walk | alert | windup | run | leap | cast | done | flee | totree | climb
     this.stateT = 0;
     this.inMap = false;
     this.howlCool = 0;
@@ -82,7 +96,7 @@ class Creature {
     this.gone = false;
   }
 
-  get attacking() { return ['windup', 'run', 'leap', 'done'].includes(this.state); }
+  get attacking() { return ['windup', 'run', 'leap', 'cast', 'done'].includes(this.state); }
 
   setState(s) { this.state = s; this.stateT = 0; }
 
@@ -124,6 +138,7 @@ class Creature {
         if (sp.danger) {
           snarl = 1;
           // only one predator attacks at a time; another keeps staring
+          if (dist < sp.close && !busy && sp.caster) { this.setState('cast'); break; }
           if (dist < sp.close && !busy) {
             this.setState('windup');
             const c = sp.sounds.charge;
@@ -200,10 +215,16 @@ class Creature {
         if (k >= 1) this.setState('done');
         break;
       }
+      case 'cast': // the witch raises her wand overhead, then points it at the pig: the curse
+        this.turnTo(toPig, 8, dt);
+        snarl = 1;
+        mgr.onCastTick?.(this, this.stateT / CAST_TIME, dt);
+        if (this.stateT >= CAST_TIME) { mgr.onCurse?.(this.kind, this); this.setState('done'); }
+        break;
       case 'done': // landed: turns round to stand over the pig, snarling
         this.turnTo(toPig, 6, dt);
         snarl = 1;
-        if (this.stateT > 1.4 && !this.over) { this.over = true; this.stopGrowl(0.4); mgr.onGameOver?.(this.kind); }
+        if (this.stateT > (sp.caster ? 2.9 : 1.4) && !this.over) { this.over = true; this.stopGrowl(0.4); mgr.onGameOver?.(this.kind); }
         break;
     }
     if (this.state !== 'alert') this.stopGrowl(0.35);
@@ -261,6 +282,12 @@ class Creature {
     this.growlT -= dt;
     if (this.growlT > 0) return;
     const s = this.sp.sounds.stare;
+    if (s.whole) {
+      const close = 1 - Math.min(1, Math.max(0, (dist - this.sp.close) / (this.sp.alert - this.sp.close)));
+      this.growl = this.mgr.audio.playSample?.(s.name, { vol: s.vol + s.volClose * close, duration: s.whole, fade: 0.3, pan: this.pan(player) * 0.6 }) || null;
+      this.growlT = s.whole + s.gap;
+      return;
+    }
     const close = 1 - Math.min(1, Math.max(0, (dist - this.sp.close) / (this.sp.alert - this.sp.close)));
     const len = rand(2.6, 3.4);
     this.growl = this.mgr.audio.slice?.(s.name, { vol: s.vol + s.volClose * close, duration: len, end: s.end, pan: this.pan(player), fade: 0.25 }) || null;
@@ -277,7 +304,57 @@ class Creature {
     this.mgr.scene.remove(this.m.root);
   }
 
+  // The witch: robe sways and boots step as she walks; staring, she leans in and lifts her wand,
+  // its tip glowing brighter; casting, she raises it overhead and then jabs it at the pig.
+  animateWitch(dt) {
+    const m = this.m, sn = this.snarl, t = performance.now() / 1000;
+    this.gait += this.speed * dt * 4.5;
+    const g = this.gait, moving = Math.min(1, this.speed / this.sp.walk);
+    m.root.position.set(this.pos.x, this.pos.y, this.pos.z);
+    m.root.rotation.set(0, this.yaw, 0);
+    m.legs.forEach((leg, i) => { leg.rotation.x = Math.sin(g + i * Math.PI) * 0.5 * moving; });
+    m.body.position.y = Math.abs(Math.sin(g)) * 0.03 * moving;
+    m.body.rotation.z = Math.sin(g) * 0.05 * moving;
+    let armX = Math.sin(g + Math.PI) * 0.25 * moving, wandX = Math.PI / 2, glow = 0.25 + 0.5 * sn;
+    let lean = 0.12 * sn;
+    if (this.state === 'alert') {
+      armX = -0.9 * sn + Math.sin(t * 2.2) * 0.06;  // wand half raised, pointed her way
+      wandX = Math.PI / 2 + 0.6 * sn;
+      glow += 0.15 * Math.sin(t * 6);
+    } else if (this.state === 'cast' || this.state === 'done') {
+      const k = this.state === 'done' ? 1 : this.stateT / CAST_TIME;
+      if (k < 0.65) {               // up overhead, wand swirling
+        const u = k / 0.65;
+        armX = -0.9 - 1.9 * u;
+        wandX = Math.PI / 2 + 0.6 + 0.4 * u;
+        lean = 0.12 - 0.2 * u;
+        glow = 0.8 + 0.2 * u;
+      } else if (k < 1) {           // the jab: arm and wand straight at the pig
+        const u = Math.min(1, (k - 0.65) / 0.12);
+        armX = -2.8 + 1.2 * u;
+        wandX = Math.PI / 2 + 1.0 + 0.57 * u;
+        lean = -0.08 + 0.3 * u;
+        glow = 1.2;
+      } else {                      // afterwards: lowers the wand slowly, pleased with herself
+        const u = Math.min(1, this.stateT / 1.5);
+        armX = -1.6 + 0.9 * u;
+        wandX = Math.PI;
+        lean = 0.22 - 0.15 * u;
+        glow = 1.2 - 0.9 * u;
+      }
+    }
+    m.body.rotation.x = lean;
+    m.arm.rotation.x = armX;
+    m.wand.rotation.x = wandX;
+    m.head.rotation.x = -0.5 * lean + Math.sin(t * 1.7 + this.seed) * 0.04;
+    m.head.rotation.z = this.state === 'walk' ? Math.sin(g * 0.5) * 0.06 : 0.12 * sn;   // tilts her head as she stares
+    m.tip.scale.setScalar(0.025 * (1 + 0.8 * glow));
+    const gl = Math.min(1, glow);
+    m.tipMat.color.setRGB(0.45 + 0.3 * gl, 0.85 + 0.15 * gl, 0.3 + 0.25 * gl);   // green, brighter as she casts
+  }
+
   animate(dt) {
+    if (this.kind === 'witch') return this.animateWitch(dt);
     const m = this.m, sp = this.sp, sn = this.snarl, look = this.look;
     const climbing = this.state === 'climb';
     const running = this.state === 'run' || this.state === 'flee' || this.state === 'totree' || climbing, leaping = this.state === 'leap';
@@ -345,8 +422,8 @@ class Creature {
 }
 
 export class Animals {
-  constructor({ scene, forest, audio, barn, mapRange, onPounce, onGameOver }) {
-    Object.assign(this, { scene, forest, audio, barn, mapRange, onPounce, onGameOver });
+  constructor({ scene, forest, audio, barn, mapRange, onPounce, onCastTick, onCurse, onGameOver }) {
+    Object.assign(this, { scene, forest, audio, barn, mapRange, onPounce, onCastTick, onCurse, onGameOver });
     this.despawn = mapRange + 55;
     this.list = [];
     this.reset();
@@ -420,7 +497,10 @@ export class Animals {
     for (const slot of this.slots) {
       if (!slot.c) {
         slot.timer -= dt;
-        if (slot.timer <= 0) {
+        // never more than MAX_DANGER wolves/bears/witches around at once: this one waits its turn
+        const dangerous = SPECIES[slot.kinds[0]].danger;
+        if (slot.timer <= 0 && dangerous && this.list.filter((c) => c.sp.danger).length >= MAX_DANGER) slot.timer = rand(8, 15);
+        else if (slot.timer <= 0) {
           slot.c = this.spawn(pick(slot.kinds), player);
           if (!slot.c) slot.timer = 3;
         }

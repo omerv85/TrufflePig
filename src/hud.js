@@ -59,7 +59,7 @@ export class Hud {
   }
 
   // Draws the map rotated so the pig always faces up.
-  // icons: dangerous animals, [{ x, z, kind: 'wolf' | 'bear', angry }].
+  // icons: dangerous animals, [{ x, z, kind: 'wolf' | 'bear' | 'witch', angry }].
   drawMap(player, barn, forest, icons = []) {
     // Padding around the map circle leaves room for the barn icon sitting on the rim.
     const PAD = 11;
@@ -154,7 +154,7 @@ export class Hud {
 
     drawBarn(g, bx, by, onRim ? 0.9 : 1);
 
-    // wolves and bears, only once they're inside the map
+    // wolves, bears and witches, only once they're inside the map
     for (const a of icons) {
       let [wx, wy] = toMap(a.x, a.z);
       const wd = Math.hypot(wx - c, wy - c);
@@ -163,7 +163,7 @@ export class Hud {
         const maxD = R - 13;
         if (wd > maxD) { wx = c + ((wx - c) / wd) * maxD; wy = c + ((wy - c) / wd) * maxD; }
         const pulse = a.angry ? 1 + 0.15 * Math.sin(performance.now() / 90) : 1;
-        (a.kind === 'bear' ? drawBear : drawWolf)(g, wx, wy, pulse, a.angry);
+        ({ bear: drawBear, witch: drawWitch }[a.kind] || drawWolf)(g, wx, wy, pulse, a.angry);
       }
     }
 
@@ -314,6 +314,55 @@ function drawBear(g, x, y, k, angry) {
   for (const s of [-1, 1]) {
     g.beginPath();
     g.arc(s * 3.6, -1.6, 1.25, 0, Math.PI * 2);
+    g.fill();
+  }
+  g.restore();
+}
+
+// Witch: green face with yellow eyes under a tall purple pointed hat. Red glow when she's staring.
+function drawWitch(g, x, y, k, angry) {
+  g.save();
+  g.translate(x, y);
+  g.scale(k, k);
+  if (angry) {
+    g.fillStyle = 'rgba(230, 70, 80, 0.35)';
+    g.beginPath();
+    g.arc(0, 0, 13, 0, Math.PI * 2);
+    g.fill();
+  }
+  g.shadowColor = 'rgba(40, 30, 50, 0.45)';
+  g.shadowBlur = 4;
+  g.strokeStyle = '#fffaf2';
+  g.lineWidth = 1.6;
+  // face
+  g.fillStyle = '#b9d79a';
+  g.beginPath();
+  g.ellipse(0, 3.5, 6.2, 6.4, 0, 0, Math.PI * 2);
+  g.fill();
+  g.shadowBlur = 0;
+  g.stroke();
+  // hat: brim and tall cone bent at the tip
+  g.fillStyle = '#4f3a6a';
+  g.beginPath();
+  g.moveTo(-5.2, -1.5);
+  g.lineTo(-1, -11);
+  g.lineTo(3.5, -13);
+  g.lineTo(1.6, -10);
+  g.lineTo(5.2, -1.5);
+  g.closePath();
+  g.fill();
+  g.stroke();
+  g.beginPath();
+  g.ellipse(0, -1.2, 10, 2.4, 0, 0, Math.PI * 2);
+  g.fill();
+  g.stroke();
+  g.fillStyle = '#c86f9a';
+  g.fillRect(-4.6, -3.6, 9.2, 1.8);
+  // yellow eyes
+  g.fillStyle = '#ffd84a';
+  for (const s of [-1, 1]) {
+    g.beginPath();
+    g.arc(s * 2.4, 3, 1.2, 0, Math.PI * 2);
     g.fill();
   }
   g.restore();
