@@ -76,7 +76,9 @@ voice is recorded.
   `bear-growling.mp3` (gargamel10 "growling bear", 6.1 s, sound only in the first 5 s; slices while it stares and as
   it charges). Witch sounds (owner-supplied): `witch-near.mp3` (3.1 s, played once when a witch comes into minimap range)
 and `witch-staring.mp3` (8.1 s, voice in the first ~5 s; the first 5.6 s played whole when she starts staring, again
-after a 2.5 s gap while she keeps staring). `frog.mp3` (owner-supplied, 22.9 s of croaks about every 0.7 s): single
+after a 2.5 s gap while she keeps staring). `walking-in-water.mp3` (owner-supplied, 13.6 s of wading; quiet, gain 2.2): one splashing step is cut from it
+(`WADE_STEPS` onsets, ~0.35-0.5 s slices) on each step in a creek, and a quieter, shorter, higher one in a mud puddle
+(`splash(intensity, small)`; the old synthesized splash is the fallback). `frog.mp3` (owner-supplied, 22.9 s of croaks about every 0.7 s): single
 croaks cut from it (offsets 0.72 / 1.45 / 2.25 s, `croak(i)`) as the smoke clears and on each of the toad's hops. Her
 spell shimmer and the smoke "poof" are synthesized (`spell`, `poof` in `audio.js`). The docile animals are silent (no recordings yet). `intro-girl.mp3`: a little British girl saying
   "Finding truffles is hard... but I bet you can do it! Just follow the yellow mist!", played once 0.8 s after "Tap to
@@ -259,7 +261,8 @@ Truffles (owner asked for them to be scarce, with a long trail to follow)
 
 Streams
 - Small streams the pig can wade through: slower in water (up to 40%), splashes instead of footsteps, ripple rings,
-  a babbling-brook sound that fades in within ~25 m. Sandy banks, reeds and cattails, pebbles. Shown on the minimap.
+  a babbling-brook sound that fades in within ~25 m. Sandy banks, reeds and cattails, and plenty of creek rocks (owner asked for more): pebbles on the bed, stones and the odd mossy
+  boulder breaking the surface, more along the banks (`forest.js`, "Creek rocks"; boulders over 0.45 m block). Shown on the minimap.
 
 Birds
 - Up to 3 flocks of 2-5 pastel songbirds (robin, bluebird, finch, sparrow; mostly one species per flock) land
@@ -302,6 +305,22 @@ Animals (the owner's design)
   raised from 16/7 m at the owner's request.)
 - Pig within 12 m: a short crouch, a loud snarl, then it charges (10 m/s), leaps over the pig and lands behind it; red
   flash, frightened squeal, the pig is bowled over, and ~1.4 s later the game-over screen.
+
+Forest floor (`forest.js`, end of `buildChunk`; own random stream `hash2(cx, cz, 555)` so trees and truffles stay put)
+- Fallen logs (0-2 per chunk, more in dense forest): bark cylinder lying on the ground, pale cut ends at both ends (a root
+  plate at one end was tried and removed at the owner's request), flat moss patches on top, sometimes a snapped branch and a cluster of
+  pastel mushrooms on the side. Solid: a chain of `log: true` colliders (not drawn on the minimap; squirrels ignore
+  them). Kept clear of trees, truffles (2.2 m), water, the meadow and the barn.
+- Stone clusters (2-4 per chunk) of small half-sunk stones, sometimes one bigger one; mossy tops on some. Only stones
+  over 0.45 m block.
+- Fallen leaves: flat maple leaves (`MAPLE` outline: five pointed lobes and a stem, 17 triangles each) in dark green,
+  dark brown and brownish red (owner's choice, from a photo of maple leaves), scattered under every tree plus some
+  everywhere, and tan leaf-litter patches tinted into the ground in dense forest. `gy()` gives the ground mesh's own
+  height so flat things lie right on it.
+- Mud puddles (about one every other chunk, only on fairly flat ground): an irregular pale-blue water patch in a ring
+  of wet mud, a separate glossy Phong mesh per chunk (`puddleMaterial`, polygon offset). No grass or flowers grow in them
+  (`inPuddle`; that's why grass and flowers are built last in `buildChunk`). Walking through one gives
+  quieter splashes and small ripples instead of footsteps (`forest.puddleAt`).
 
 ## Ideas discussed but not built
 - Returning to the barn with the truffles as a goal (the reason for the barn and minimap).

@@ -40,5 +40,5 @@ Deployed as a Cloudflare Worker serving static files (`wrangler.jsonc`). The Wor
   cartoon_music "pig grunting excitedly" (537017), DRAGON-STUDIO "bird wings" (463212), and
   freesound_community "small creek" (70653), plus wolf sounds DRAGON-STUDIO "howling wolves" (515977) and
   alice_soundz "scary wolf growling" (224086), and bear sounds universfield "bear growl" (191995) and
-  gargamel10 "growling bear" (379127)
+  gargamel10 "growling bear" (379127); `walking-in-water.mp3` (splashing steps in creeks and puddles) was supplied by the owner
 - `src/noise.js` – seeded noise, terrain height, and the stream network (streams follow a noise contour, so they meander endlessly and line up across chunks)

@@ -4,6 +4,9 @@
 
 const rand = (a, b) => a + Math.random() * (b - a);
 
+// Start times (s) of single splashing steps in walking-in-water.mp3 (the first 3 s are quieter wading).
+const WADE_STEPS = [3.48, 4.04, 4.6, 5.26, 6.02, 6.7, 7.22, 8.08, 9.24, 9.96, 10.62, 11.3, 11.98];
+
 export class Ambience {
   constructor() {
     this.ctx = null;
@@ -491,6 +494,7 @@ export class Ambience {
       frog: ['assets/sounds/frog.mp3', 1.4],                   // the toad's croaks after the curse
       intro: ['assets/sounds/intro-girl.mp3', 1.0],             // the girl's welcome line at the start
       hint: ['assets/sounds/hint-girl.mp3', 1.0],               // her "truffle nearby" hint near the first truffle
+      wade: ['assets/sounds/walking-in-water.mp3', 2.2],        // splashing steps in a creek or a mud puddle
     };
     this.samples = {};
     await Promise.all(Object.entries(files).map(async ([name, [url, gain]]) => {
@@ -825,8 +829,20 @@ export class Ambience {
     });
   }
 
-  splash(intensity) {
+  // One splashing step: a slice of the wading recording around one of its steps (onsets found
+  // by measuring the file). `small` is a mud puddle: quieter, shorter and a little higher.
+  splash(intensity, small = false) {
     if (!this.ctx) return;
+    const at = WADE_STEPS[Math.floor(Math.random() * WADE_STEPS.length)];
+    if (this.playSample('wade', {
+      offset: at - 0.04, duration: small ? 0.32 : 0.36 + (1 - intensity) * 0.14, fade: 0.04,
+      vol: (small ? 0.45 : 0.7) + intensity * 0.3, rate: rand(0.94, 1.08) * (small ? 1.12 : 1), pan: rand(-0.15, 0.15),
+    })) return;
+    this.synthSplash(intensity);
+  }
+
+  // Fallback if the recording didn't load.
+  synthSplash(intensity) {
     const ctx = this.ctx;
     const { t } = this.noiseHit(this.white, 0.2, { type: 'bandpass', freq: rand(1100, 1700), q: 0.8, vol: 0.12 + intensity * 0.1, attack: 0.008, pan: rand(-0.2, 0.2) });
     // a little "bloop"

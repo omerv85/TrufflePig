@@ -270,10 +270,10 @@ const ripples = (() => {
   }
   let next = 0;
   return {
-    spawn(x, z, size) {
+    spawn(x, z, size, y = waterLevel(x, z) + 0.04) {
       const m = pool[next];
       next = (next + 1) % pool.length;
-      m.position.set(x, waterLevel(x, z) + 0.04, z);
+      m.position.set(x, y, z);
       m.userData.t = 0;
       m.userData.size = size;
       m.visible = true;
@@ -716,9 +716,14 @@ function update(dt) {
   player.gait += player.speed * dt * 3.0;
   const stepSign = Math.sign(Math.sin(player.gait));
   if (stepSign !== lastStepSign && player.speed > 0.6) {
+    const puddle = !inWater && forest.puddleAt(player.pos.x, player.pos.z);
     if (inWater) {
       audio.splash(speedNorm);
       ripples.spawn(player.pos.x + _fwd.x * 0.3, player.pos.z + _fwd.z * 0.3, 0.8 + speedNorm * 0.6);
+    } else if (puddle) {
+      audio.splash(speedNorm, true);
+      const x = player.pos.x + _fwd.x * 0.3, z = player.pos.z + _fwd.z * 0.3;
+      ripples.spawn(x, z, 0.25 + speedNorm * 0.15, terrainHeight(x, z) + 0.07);
     } else audio.step(speedNorm);
   }
   lastStepSign = stepSign;

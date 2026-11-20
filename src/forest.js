@@ -23,10 +23,22 @@ const PAL = {
   tuft: [C('#a2d98a'), C('#b8e398'), C('#95d39a'), C('#cbe79a')],
   flower: [C('#ffc4d6'), C('#dccbff'), C('#fff0a3'), C('#ffffff'), C('#ffd2b0')],
   rock: [C('#d9d3e3'), C('#e4ddd6'), C('#cfd6dd')],
+  creekRock: [C('#c9c4d4'), C('#d4cdc4'), C('#bcc5ce'), C('#b3b0be'), C('#e0dad2')],
   bank: C('#e8dcb5'),
   bed: C('#b9b6a0'),
   reed: [C('#9cc98a'), C('#b3d38f'), C('#8fbf8f')],
   cattail: C('#a77b62'),
+  litter: C('#dccb9c'),
+  bark: C('#c19d84'),
+  cutWood: C('#efd9b4'),
+  moss: [C('#a6d48a'), C('#b5dc8f'), C('#98cc8e')],
+  leaf: [C('#557f3f'), C('#4a7038'), C('#6a8c45'), C('#6e4a30'), C('#5e3f2a'), C('#80583a'), C('#8e3b28'), C('#9c4a2e'), C('#7c3324')],
+  shroom: [C('#f4a9a0'), C('#f3d5a5'), C('#e6c4ea'), C('#fbe7c6')],
+  stem: C('#fbf3e6'),
+  mud: C('#b8957c'),
+  mudEdge: C('#d0b498'),
+  puddle: C('#c3dce8'),
+  puddleDeep: C('#acc8d8'),
 };
 
 // ---------- geometry templates ----------
@@ -60,6 +72,7 @@ const T = {
   rock: tpl(new THREE.DodecahedronGeometry(1, 0)),
   flower: tpl(new THREE.OctahedronGeometry(1, 0)),
   grass: tpl(grassGeometry()),
+  log: tpl(new THREE.CylinderGeometry(1, 1, 1, 7, 1)),
 };
 
 // ---------- merged-geometry builder ----------
@@ -69,6 +82,13 @@ const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _e = new THREE.Eule
 function mat(x, y, z, sx, sy, sz, ry = 0, rx = 0, rz = 0) {
   _e.set(rx, ry, rz);
   _q.setFromEuler(_e);
+  return _m.compose(_p.set(x, y, z), _q, _s.set(sx, sy, sz));
+}
+
+// Same, but with the template's y axis pointing along `dir` (unit), rolled by `roll` about it.
+const UP = new THREE.Vector3(0, 1, 0), _q2 = new THREE.Quaternion();
+function matDir(x, y, z, dir, sx, sy, sz, roll = 0) {
+  _q.setFromUnitVectors(UP, dir).multiply(_q2.setFromAxisAngle(UP, roll));
   return _m.compose(_p.set(x, y, z), _q, _s.set(sx, sy, sz));
 }
 
@@ -205,6 +225,15 @@ function bush(b, x, y, z, rng) {
   }
 }
 
+// Maple leaf outline, base to tip and back: five pointed lobes with notches between
+// (u along the leaf, v across; [u, v, lift]). Drawn as a fan from a point in the middle.
+const MAPLE = [
+  [0, 0, 0.006], [0.1, 0.3, 0.002], [0.04, 0.55, 0], [0.3, 0.33, 0.008], [0.42, 0.62, 0],
+  [0.6, 0.6, 0.002], [0.56, 0.24, 0.01], [0.72, 0.2, 0.008], [1, 0, 0.012],
+  [0.72, -0.2, 0.008], [0.56, -0.24, 0.01], [0.6, -0.6, 0.002], [0.42, -0.62, 0],
+  [0.3, -0.33, 0.008], [0.04, -0.55, 0], [0.1, -0.3, 0.002],
+];
+
 // ---------- chunk ----------
 function buildChunk(cx, cz) {
   const rng = mulberry32(Math.floor(hash2(cx, cz, 99) * 4294967296));
@@ -242,6 +271,8 @@ function buildChunk(cx, cz) {
         gc.copy(PAL.grassA).lerp(PAL.grassB, fbm(mx * 0.06, mz * 0.06, 11, 2));
         gc.lerp(PAL.grassSun, smoothstep(0.55, 0.75, fbm(mx * 0.02, mz * 0.02, 23, 2)) * 0.7);
         gc.lerp(PAL.grassShade, forestDensity(mx, mz) * 0.5);
+        // patches of old leaf litter under the trees
+        gc.lerp(PAL.litter, smoothstep(0.45, 0.7, fbm(mx * 0.09, mz * 0.09, 31, 2)) * Math.min(0.7, forestDensity(mx, mz)));
         // sandy banks and a pebbly bed near streams
         if (dCell < STREAM_HALF + 2.2) {
           gc.lerp(PAL.bank, smoothstep(STREAM_HALF + 2.2, STREAM_HALF + 0.6, dCell));
@@ -331,11 +362,215 @@ function buildChunk(cx, cz) {
     if (r > 0.55) colliders.push({ x: wx, z: wz, r: r * 0.9 });
   }
 
+  // Forest-floor clutter (fallen logs, stones, leaves, mud puddles) uses its own random stream
+  // too, so the trees and truffles stay where they were.
+  const frng = mulberry32(Math.floor(hash2(cx, cz, 555) * 4294967296));
+  // Height of the ground mesh itself (not the smooth terrain) so flat things lie right on it.
+  const gy = (lx, lz) => {
+    const fi = Math.min(GROUND_SEG - 1e-4, Math.max(0, lx / step)), fj = Math.min(GROUND_SEG - 1e-4, Math.max(0, lz / step));
+    const i = Math.floor(fi), j = Math.floor(fj), fx = fi - i, fz = fj - j;
+    const h00 = at(H, i, j), h10 = at(H, i + 1, j), h01 = at(H, i, j + 1), h11 = at(H, i + 1, j + 1);
+    return fx + fz <= 1 ? h00 + (h10 - h00) * fx + (h01 - h00) * fz
+      : h11 + (h01 - h11) * (1 - fx) + (h10 - h11) * (1 - fz);
+  };
+  const trees = colliders.filter((c) => c.leaf !== undefined);
+  const nearBarn = (wx, wz) => (wx - BARN_POS.x) ** 2 + (wz - BARN_POS.z) ** 2 < 8 * 8;
+  const clearOf = (wx, wz, r) => {
+    for (const c of colliders) if ((c.x - wx) ** 2 + (c.z - wz) ** 2 < (c.r + r) ** 2) return false;
+    for (const t of truffles) if ((t.x - wx) ** 2 + (t.z - wz) ** 2 < (r + 2.2) ** 2) return false;
+    return true;
+  };
+
+  // Fallen logs
+  const logTries = frng() < 0.25 + forestDensity(ox + CHUNK / 2, oz + CHUNK / 2) ? 4 : 1;
+  let logs = 0;
+  for (let k = 0; k < logTries && logs < 2; k++) {
+    const len = 2.8 + frng() * 3.4, r = 0.2 + frng() * 0.17, a = frng() * Math.PI * 2;
+    const lx = frng() * CHUNK, lz = frng() * CHUNK;
+    frng(); // (was the root-plate roll; kept so the logs stay where they are)
+    const dx = Math.cos(a), dz = Math.sin(a);
+    const ax = lx - dx * len / 2, az = lz - dz * len / 2, bx = lx + dx * len / 2, bz = lz + dz * len / 2;
+    if (Math.min(ax, az, bx, bz) < 1.2 || Math.max(ax, az, bx, bz) > CHUNK - 1.2) continue;
+    const yA = gy(ax, az) + r * 0.7, yB = gy(bx, bz) + r * 0.7;
+    let ok = true;
+    for (let t = 0; t <= 1.0001 && ok; t += 0.1) {
+      const sx = ax + (bx - ax) * t, sz = az + (bz - az) * t, wx = ox + sx, wz = oz + sz;
+      const lift = yA + (yB - yA) * t - gy(sx, sz);
+      ok = lift > r * 0.25 && lift < r * 1.5 && !inClearing(wx, wz) && !nearBarn(wx, wz) && !wet(wx, wz, 2.2)
+        && clearOf(wx, wz, r + 0.45);
+    }
+    if (!ok) continue;
+    logs++;
+    const dir = new THREE.Vector3(bx - ax, yB - yA, bz - az).normalize();
+    const side = new THREE.Vector3(-dz, 0, dx); // horizontal, across the log
+    b.add(T.log, matDir(lx, (yA + yB) / 2, lz, dir, r, len, r, frng() * 6), PAL.bark, frng, 0, 0, 0.07);
+    // pale cut ends
+    b.add(T.log, matDir(ax - dir.x * 0.015, yA - dir.y * 0.015, az - dir.z * 0.015, dir, r * 0.88, 0.04, r * 0.88), PAL.cutWood, frng, 0, 0, 0.04);
+    b.add(T.log, matDir(bx + dir.x * 0.015, yB + dir.y * 0.015, bz + dir.z * 0.015, dir, r * 0.88, 0.04, r * 0.88), PAL.cutWood, frng, 0, 0, 0.04);
+    // moss on top, squashed flat onto the bark
+    const moss = 2 + Math.floor(frng() * 3), mossN = T.blobLo.attributes.position.count;
+    for (let i = 0; i < moss; i++) {
+      const t = 0.15 + frng() * 0.7, ms = r * (0.55 + frng() * 0.35), cy = yA + (yB - yA) * t + r * 0.78;
+      b.add(T.blobLo, matDir(ax + (bx - ax) * t, cy, az + (bz - az) * t, dir, ms, ms * 1.6, ms, frng() * 6),
+        pick(PAL.moss, frng), frng, 0, 0, 0.08);
+      for (let v = b.pos.length - mossN * 3 + 1; v < b.pos.length; v += 3) b.pos[v] = cy + (b.pos[v] - cy) * 0.22;
+    }
+    // a snapped-off branch
+    if (frng() < 0.6) {
+      const t = 0.3 + frng() * 0.5, s = frng() < 0.5 ? 1 : -1;
+      b.add(T.trunk, mat(ax + (bx - ax) * t, yA + (yB - yA) * t + r * 0.3, az + (bz - az) * t, 0.4, 0.7 + frng() * 0.6, 0.4,
+        0, side.z * 0.8 * s, -side.x * 0.8 * s), PAL.bark, frng, 0, 0, 0.05);
+    }
+    // a little cluster of mushrooms on its side
+    if (frng() < 0.55) {
+      const t0 = 0.2 + frng() * 0.6, s = frng() < 0.5 ? 1 : -1, col = pick(PAL.shroom, frng), n = 2 + Math.floor(frng() * 3);
+      for (let i = 0; i < n; i++) {
+        const t = t0 + (frng() - 0.5) * 0.12, h = 0.06 + frng() * 0.06, cr = 0.05 + frng() * 0.04;
+        const mx = ax + (bx - ax) * t + side.x * s * r * 0.8, mz = az + (bz - az) * t + side.z * s * r * 0.8;
+        const my = yA + (yB - yA) * t + r * 0.3 + (frng() - 0.5) * r * 0.3;
+        b.add(T.trunk, mat(mx, my, mz, 0.12, h, 0.12), PAL.stem, frng, 0, 0, 0.03);
+        b.add(T.blob, mat(mx, my + h, mz, cr, cr * 0.5, cr), col, frng, 0, 0, 0.05);
+      }
+    }
+    const nc = Math.ceil(len / 0.6);
+    for (let i = 0; i < nc; i++) {
+      const t = (i + 0.5) / nc;
+      colliders.push({ x: ox + ax + (bx - ax) * t, z: oz + az + (bz - az) * t, r: r + 0.05, log: true });
+    }
+  }
+
+  // Stones: little clusters half sunk in the ground, some with moss on top
+  const clusters = 2 + Math.floor(frng() * 3);
+  for (let k = 0; k < clusters; k++) {
+    const px = 1.5 + frng() * (CHUNK - 3), pz = 1.5 + frng() * (CHUNK - 3);
+    const n = 2 + Math.floor(frng() * 5), big = frng() < 0.35;
+    if (inClearing(ox + px, oz + pz) || wet(ox + px, oz + pz, 1.5)) continue;
+    for (let i = 0; i < n; i++) {
+      const lx = Math.min(CHUNK, Math.max(0, px + (frng() - 0.5) * 2.4)), lz = Math.min(CHUNK, Math.max(0, pz + (frng() - 0.5) * 2.4));
+      const wx = ox + lx, wz = oz + lz;
+      const r = i === 0 && big ? 0.38 + frng() * 0.25 : 0.07 + frng() * 0.2;
+      const sy = 0.45 + frng() * 0.3, sz = 0.9 + frng() * 0.4, ry = frng() * 6, rx = (frng() - 0.5) * 0.4, rz = (frng() - 0.5) * 0.4;
+      const col = pick(PAL.rock, frng), mossy = r > 0.2 && frng() < 0.6;
+      if (!clearOf(wx, wz, r + 0.1)) continue;
+      const y = gy(lx, lz);
+      b.add(T.rock, mat(lx, y + r * 0.15, lz, r, r * sy, r * sz, ry, rx, rz), col, frng, 0, 0, 0.06);
+      if (mossy) b.add(T.blobLo, mat(lx, y + r * (0.15 + sy * 0.75), lz, r * 0.7, r * 0.16, r * 0.75, ry), pick(PAL.moss, frng), frng, 0, 0, 0.08);
+      if (r > 0.45) colliders.push({ x: wx, z: wz, r: r * 0.85 });
+    }
+  }
+
+  // Creek rocks: pebbles on the bed, stones and the odd boulder breaking the surface, more along the banks
+  if (anyWater) {
+    for (let i = 0; i < 380; i++) {
+      const lx = frng() * CHUNK, lz = frng() * CHUNK, wx = ox + lx, wz = oz + lz;
+      const roll = frng(), ry = frng() * 6, sy = 0.75 + frng() * 0.45, sz = 0.85 + frng() * 0.4, col = pick(PAL.creekRock, frng);
+      const tilt = (frng() - 0.5) * 0.5, mossy = frng() < 0.5;
+      const d = streamDist(wx, wz);
+      if (d > STREAM_HALF + 1.1) continue;
+      const inWater = d < STREAM_HALF - 0.1;
+      // in the water: fewer pebbles, more stones and boulders tall enough to break the surface
+      const r = roll < (inWater ? 0.3 : 0.5) ? 0.06 + roll * 0.3        // pebble
+        : roll < (inWater ? 0.85 : 0.97) ? 0.22 + (roll - 0.3) * 0.3     // stone
+        : 0.4 + (roll - 0.85) * 1.5;                                    // boulder
+      if (!clearOf(wx, wz, r * 0.5)) continue;
+      const y = gy(lx, lz);
+      const lift = inWater && r > 0.2 ? 0.3 : 0.15;
+      b.add(T.rock, mat(lx, y + r * lift, lz, r, r * sy, r * sz, ry, tilt, -tilt), col, frng, 0, 0, 0.07);
+      if (r > 0.3 && mossy) b.add(T.blobLo, mat(lx, y + r * (lift + sy * 0.78), lz, r * 0.6, r * 0.15, r * 0.65, ry), pick(PAL.moss, frng), frng, 0, 0, 0.08);
+      if (r > 0.45) colliders.push({ x: wx, z: wz, r: r * 0.85 });
+    }
+  }
+
+  // Mud puddles: their own glossy mesh, draped over the ground
+  const ppos = [], pcol = [], puddles = [];
+  const nPud = frng() < 0.55 ? 1 + (frng() < 0.3 ? 1 : 0) : 0;
+  for (let k = 0; k < nPud; k++) {
+    const R = 0.7 + frng() * 0.9, mudR = R * 1.3 + 0.2;
+    const lx = mudR + 0.5 + frng() * (CHUNK - 2 * mudR - 1), lz = mudR + 0.5 + frng() * (CHUNK - 2 * mudR - 1);
+    const wx = ox + lx, wz = oz + lz;
+    const ph1 = frng() * 6, ph2 = frng() * 6, ph3 = frng() * 6;
+    if (nearBarn(wx, wz) || wet(wx, wz, mudR + 2) || !clearOf(wx, wz, mudR + 0.3)) continue;
+    let lo = Infinity, hi = -Infinity;
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2, h = gy(lx + Math.cos(a) * mudR, lz + Math.sin(a) * mudR);
+      lo = Math.min(lo, h); hi = Math.max(hi, h);
+    }
+    if (hi - lo > 0.35) continue; // too steep for standing water
+    const shape = (a) => 1 + 0.17 * Math.sin(3 * a + ph1) + 0.09 * Math.sin(5 * a + ph2) + 0.05 * Math.sin(2 * a + ph3);
+    puddles.push({ x: wx, z: wz, r: R * 0.85, mudR, shape });
+    const SEG = 18;
+    const pt = (a, rad, lift) => { const x = lx + Math.cos(a) * rad, z = lz + Math.sin(a) * rad; return [x, gy(x, z) + lift, z]; };
+    const quad = (p00, p01, p10, p11, c0, c1) => {
+      ppos.push(...p00, ...p10, ...p01, ...p01, ...p10, ...p11);
+      for (const c of [c0, c1, c0, c0, c1, c1]) pcol.push(c.r, c.g, c.b);
+    };
+    // rings from the middle out: [radius factor, height above ground, colour]
+    const rings = [
+      [0.001, 0.05, PAL.puddleDeep], [0.5, 0.05, PAL.puddleDeep], [1.0, 0.045, PAL.puddle],
+      [1.0, 0.03, PAL.mud], [(mudR - 0.12) / R, 0.025, PAL.mud], [mudR / R, 0.012, PAL.mudEdge],
+    ];
+    for (let s = 0; s < SEG; s++) {
+      const a0 = (s / SEG) * Math.PI * 2, a1 = ((s + 1) / SEG) * Math.PI * 2, f0 = shape(a0), f1 = shape(a1);
+      for (let q = 0; q < rings.length - 1; q++) {
+        const [ra, la, ca] = rings[q], [rb, lb, cb] = rings[q + 1];
+        quad(pt(a0, R * ra * f0, la), pt(a1, R * ra * f1, la), pt(a0, R * rb * f0, lb), pt(a1, R * rb * f1, lb), ca, cb);
+      }
+    }
+  }
+  let puddleGeo = null;
+  if (ppos.length) {
+    puddleGeo = new THREE.BufferGeometry();
+    puddleGeo.setAttribute('position', new THREE.Float32BufferAttribute(ppos, 3));
+    puddleGeo.setAttribute('color', new THREE.Float32BufferAttribute(pcol, 3));
+    const nor = new Float32Array(ppos.length);
+    for (let i = 1; i < nor.length; i += 3) nor[i] = 1;
+    puddleGeo.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+    puddleGeo.computeBoundingSphere();
+  }
+
+  // Fallen maple leaves: scattered under each tree, a few everywhere else
+  const leaf = (lx, lz) => {
+    if (lx < 0 || lz < 0 || lx > CHUNK || lz > CHUNK) return;
+    const wx = ox + lx, wz = oz + lz;
+    const a = frng() * Math.PI * 2, L = 0.26 + frng() * 0.16, W = 0.85 + frng() * 0.3;
+    const ca = Math.cos(a), sa = Math.sin(a), lift = 0.022 + frng() * 0.01;
+    const col = pick(PAL.leaf, frng), shade = 0.9 + frng() * 0.2;
+    if (anyWater && wet(wx, wz, 0.4)) return;
+    // u along the leaf (base 0 -> tip 1), v across it (scaled by W), up = curl
+    const P = (u, v, up) => {
+      const uu = u * L, vv = v * L * W;
+      const x = lx + ca * uu - sa * vv, z = lz + sa * uu + ca * vv;
+      return [x, gy(x, z) + lift + up, z];
+    };
+    _tmpC.copy(col).multiplyScalar(shade);
+    const c = P(0.4, 0, 0.018), rim = MAPLE.map(([u, v, up]) => P(u, v, up));
+    for (let i = 0; i < rim.length; i++) b.tri(c, rim[i], rim[(i + 1) % rim.length], _tmpC);
+    b.tri(P(0, 0.025, 0.004), P(-0.3, 0, 0.002), P(0, -0.025, 0.004), _tmpC); // stem
+  };
+  for (const t of trees) {
+    const n = 8 + Math.floor(frng() * 12);
+    for (let i = 0; i < n; i++) {
+      const a = frng() * Math.PI * 2, d = t.r + 0.2 + Math.pow(frng(), 0.7) * 3;
+      leaf(t.x - ox + Math.cos(a) * d, t.z - oz + Math.sin(a) * d);
+    }
+  }
+  for (let i = 0; i < 130; i++) {
+    const lx = frng() * CHUNK, lz = frng() * CHUNK;
+    if (frng() < forestDensity(ox + lx, oz + lz) + 0.15) leaf(lx, lz);
+  }
+
+  // Grass and flowers come last so they can keep out of the mud puddles (they use the main
+  // random stream, which nothing after them draws from, so moving them changed nothing).
+  const inPuddle = (wx, wz) => puddles.some((p) => {
+    const dx = wx - p.x, dz = wz - p.z;
+    return dx * dx + dz * dz < (p.mudR * p.shape(Math.atan2(dz, dx)) + 0.15) ** 2;
+  });
+
   // Grass tufts
   for (let i = 0; i < 170; i++) {
     const lx = rng() * CHUNK, lz = rng() * CHUNK;
     const s = 0.7 + rng() * 0.7;
-    if (anyWater && wet(ox + lx, oz + lz, 0.3)) continue;
+    if ((anyWater && wet(ox + lx, oz + lz, 0.3)) || inPuddle(ox + lx, oz + lz)) continue;
     b.add(T.grass, mat(lx, terrainHeight(ox + lx, oz + lz) - 0.02, lz, s, 0.28 + rng() * 0.32, s, rng() * 6), pick(PAL.tuft, rng), rng, 0, 1, 0.1);
   }
 
@@ -347,7 +582,7 @@ function buildChunk(cx, cz) {
     const n = 4 + Math.floor(rng() * 7);
     for (let i = 0; i < n; i++) {
       const lx = px + (rng() - 0.5) * 3, lz = pz + (rng() - 0.5) * 3;
-      if (anyWater && wet(ox + lx, oz + lz, 0.5)) continue;
+      if ((anyWater && wet(ox + lx, oz + lz, 0.5)) || inPuddle(ox + lx, oz + lz)) continue;
       const y = terrainHeight(ox + lx, oz + lz);
       const h = 0.25 + rng() * 0.15;
       b.add(T.grass, mat(lx, y - 0.02, lz, 0.4, h, 0.4, rng() * 6), PAL.tuft[0], rng, 0, 1, 0.05);
@@ -355,7 +590,7 @@ function buildChunk(cx, cz) {
     }
   }
 
-  return { geometry: b.build(), water, colliders, truffles };
+  return { geometry: b.build(), water, puddleGeo, puddles, colliders, truffles };
 }
 
 // ---------- manager ----------
@@ -367,6 +602,18 @@ export class Forest {
     this.chunks = new Map();
     this.boxes = []; // static axis-aligned obstacles, e.g. the barn
     this.collected = new Set(); // truffle ids already dug up (survive chunk reloads)
+    this.puddleMaterial = new THREE.MeshPhongMaterial({
+      vertexColors: true, specular: '#fff6e4', shininess: 60, side: THREE.DoubleSide,
+      polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
+    });
+  }
+
+  // The mud puddle (x, z) is standing in, if any: { x, z, r }.
+  puddleAt(x, z) {
+    const c = this.chunks.get(Forest.key(Math.floor(x / CHUNK), Math.floor(z / CHUNK)));
+    if (!c) return null;
+    for (const p of c.puddles) if ((p.x - x) ** 2 + (p.z - z) ** 2 < p.r * p.r) return p;
+    return null;
   }
 
   // Uncollected truffles in chunks near (x, z).
@@ -413,7 +660,7 @@ export class Forest {
     want.sort((a, b) => a[0] - b[0]);
     for (let i = 0; i < Math.min(maxBuilds, want.length); i++) {
       const [, cx, cz, k] = want[i];
-      const { geometry, water, colliders, truffles } = buildChunk(cx, cz);
+      const { geometry, water, puddleGeo, puddles, colliders, truffles } = buildChunk(cx, cz);
       const mesh = new THREE.Mesh(geometry, this.material);
       mesh.position.set(cx * CHUNK, 0, cz * CHUNK);
       mesh.castShadow = true;
@@ -431,7 +678,16 @@ export class Forest {
         waterMesh.updateMatrix();
         this.scene.add(waterMesh);
       }
-      this.chunks.set(k, { cx, cz, mesh, waterMesh, colliders, truffles });
+      let puddleMesh = null;
+      if (puddleGeo) {
+        puddleMesh = new THREE.Mesh(puddleGeo, this.puddleMaterial);
+        puddleMesh.position.copy(mesh.position);
+        puddleMesh.receiveShadow = true;
+        puddleMesh.matrixAutoUpdate = false;
+        puddleMesh.updateMatrix();
+        this.scene.add(puddleMesh);
+      }
+      this.chunks.set(k, { cx, cz, mesh, waterMesh, puddleMesh, puddles, colliders, truffles });
     }
     for (const [k, c] of this.chunks) {
       const dx = c.cx - pcx, dz = c.cz - pcz;
@@ -441,6 +697,10 @@ export class Forest {
         if (c.waterMesh) {
           this.scene.remove(c.waterMesh);
           c.waterMesh.geometry.dispose();
+        }
+        if (c.puddleMesh) {
+          this.scene.remove(c.puddleMesh);
+          c.puddleMesh.geometry.dispose();
         }
         this.chunks.delete(k);
       }

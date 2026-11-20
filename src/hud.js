@@ -116,6 +116,7 @@ export class Hud {
     // trees
     g.fillStyle = 'rgba(120, 180, 125, 0.6)';
     for (const t of forest.nearbyColliders(player.pos.x, player.pos.z, MAP_RANGE)) {
+      if (t.log) continue; // fallen logs aren't drawn
       const [x, y] = toMap(t.x, t.z);
       if ((x - c) ** 2 + (y - c) ** 2 > R * R) continue;
       g.beginPath();
