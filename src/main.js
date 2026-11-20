@@ -230,6 +230,7 @@ document.getElementById('play').addEventListener('click', () => {
   // on phones, starting also goes full screen (same as RatSniper); must run inside this tap's click
   if (isTouch() && fsSupported && !isFullscreen()) enterFullscreen();
   audio.start();
+  audio.playIntro();
   started = true;
   nextSnort = 3 + Math.random() * 3;
   document.getElementById('start').classList.add('hide');

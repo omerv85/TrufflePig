@@ -43,7 +43,7 @@ export class Ambience {
     this.insects();
     this.cicadas();
     this.scheduleBird(1.2);
-    this.loadSamples();
+    this.samplesReady = this.loadSamples();
 
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) ctx.suspend(); else if (!this.paused) ctx.resume();
@@ -353,6 +353,7 @@ export class Ambience {
       growl: ['assets/sounds/wolf-growl.mp3', 1.3],
       bearGrowl: ['assets/sounds/bear-growl.mp3', 1.8],         // short growl as a bear comes into map range
       bearGrowling: ['assets/sounds/bear-growling.mp3', 0.6],   // the bear staring and charging
+      intro: ['assets/sounds/intro-girl.mp3', 1.0],             // the girl's welcome line at the start
     };
     this.samples = {};
     await Promise.all(Object.entries(files).map(async ([name, [url, gain]]) => {
@@ -389,6 +390,12 @@ export class Ambience {
     src.connect(g).connect(p).connect(this.master);
     src.start(t, offset, duration);
     return { src, g };
+  }
+
+  // The little girl's welcome line, once the recordings have loaded.
+  async playIntro(delay = 0.8) {
+    await this.samplesReady;
+    this.playSample('intro', { when: delay, vol: 1 });
   }
 
   // Fade out and stop a sound started with playSample.
