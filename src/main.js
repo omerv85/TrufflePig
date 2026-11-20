@@ -455,6 +455,8 @@ function showBubble(text) {
   void sniffEl.offsetWidth; // restart animation
   sniffEl.classList.add('show');
 }
+// the bubble's fade-out has finished: free it for the next squeal
+sniffEl.addEventListener('animationend', () => sniffEl.classList.remove('show'));
 
 // ---------- truffle hunt ----------
 const hunt = new TruffleHunt({
