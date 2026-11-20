@@ -12,6 +12,8 @@ function lam(color) {
 }
 // unlit eyes, still fogged so they don't give an animal away in the haze
 const wolfEye = new THREE.MeshBasicMaterial({ color: '#ffd84a' });
+// the owl's eyes: bright, unlit and unfogged, so they shine out of the dark from far off
+const owlEye = new THREE.MeshBasicMaterial({ color: '#ffe633', fog: false });
 
 const BALL = new THREE.IcosahedronGeometry(1, 1);
 const BOX = new THREE.BoxGeometry(1, 1, 1);
@@ -490,11 +492,171 @@ function squirrel() {
   return P;
 }
 
-export const MODELS = { wolf, bear, witch, troll, deer, goat, moose, squirrel };
+// Mesh pointing its +Y along `dir` (a unit Vector3).
+const _up = new THREE.Vector3(0, 1, 0);
+function mdir(geo, mat, p, s, dir) {
+  const o = m(geo, mat, p, s);
+  o.quaternion.setFromUnitVectors(_up, dir);
+  return o;
+}
+
+// Hedgehog: a little brown dome of pale-tipped spines, a pointy tan face. curl (animals.js) rolls it
+// into a spiky ball: head and legs tuck in.
+function hedgehog() {
+  const skin = '#9a7a62', face = '#dcc09c', spine = '#7a6150', tip = '#e2d0b2', dark = '#3a2a24';
+  const P = base();
+  P.body.add(m(BALL, skin, [0, 0.1, 0], [0.12, 0.085, 0.16]));
+  const d = new THREE.Vector3();
+  for (let i = 0; i < 46; i++) {
+    const u = (i + 0.5) / 46, ph = Math.acos(1 - u * 1.05), th = i * 2.399;
+    const nx = Math.sin(ph) * Math.cos(th), ny = Math.cos(ph), nz = Math.sin(ph) * Math.sin(th);
+    if (nz > 0.6 && ny < 0.75) continue;                      // leave the face clear
+    d.set(nx, ny + 0.15, nz - 0.55).normalize();              // spines sweep backwards
+    const pos = [nx * 0.115, 0.1 + ny * 0.085, nz * 0.15];
+    P.body.add(mdir(CONE, i % 3 ? spine : tip, pos, [0.024, 0.11, 0.024], d));
+  }
+  P.neck = grp(P.body, [0, 0.08, 0.13]);
+  const head = P.head = grp(P.neck, [0, 0, 0.02]);
+  head.add(
+    m(BALL, face, [0, 0, 0.02], [0.07, 0.06, 0.075]),
+    m(CONE, face, [0, -0.01, 0.1], [0.032, 0.09, 0.032], [Math.PI / 2, 0, 0]),   // pointy snout
+    m(BALL, dark, [0, -0.01, 0.145], 0.016),                                      // nose
+    m(BALL, BLACK, [0.035, 0.022, 0.07], 0.012),
+    m(BALL, BLACK, [-0.035, 0.022, 0.07], 0.012),
+  );
+  for (const sd of [-1, 1]) {
+    const ear = grp(head, [sd * 0.045, 0.045, 0.02]);
+    ear.add(m(BALL, face, [0, 0, 0], [0.018, 0.016, 0.01]));
+    P.ears.push(ear);
+  }
+  P.tail = grp(P.body);
+  addLegs(P, { hip: 0.055, spots: [[-0.06, 0.07, 1], [0.06, 0.07, 1], [-0.06, -0.07, 0], [0.06, -0.07, 0]], r0: 0.018, r1: 0.014, mat: face, foot: 'paw', footMat: dark });
+  return P;
+}
+
+// Rabbit: grey-brown with a pale belly, long pink-lined ears and a white cotton tail. Sits up to stare.
+function rabbit() {
+  const fur = '#a08b78', light = '#efe3d3', dark = '#5d4a3e', pink = '#eaa9b2';
+  const P = base();
+  P.body.add(
+    m(BALL, fur, [0, 0.17, -0.02], [0.105, 0.115, 0.16]),
+    m(BALL, light, [0, 0.14, 0.04], [0.075, 0.08, 0.1]),           // pale chest and belly
+  );
+  for (const sd of [-1, 1]) P.body.add(m(BALL, fur, [sd * 0.065, 0.14, -0.08], [0.055, 0.08, 0.09]));   // haunches
+  P.neck = grp(P.body, [0, 0.25, 0.1]);
+  const head = P.head = grp(P.neck, [0, 0.04, 0.03]);
+  head.add(
+    m(BALL, fur, [0, 0, 0], [0.068, 0.064, 0.085]),
+    m(BALL, light, [0, -0.026, 0.06], [0.04, 0.03, 0.035]),         // muzzle
+    m(BALL, pink, [0, -0.008, 0.088], 0.012),                       // nose
+    m(BALL, BLACK, [0.045, 0.016, 0.04], 0.014),
+    m(BALL, BLACK, [-0.045, 0.016, 0.04], 0.014),
+  );
+  for (const sd of [-1, 1]) {
+    const ear = grp(head, [sd * 0.025, 0.05, -0.02], [-0.25, 0, -sd * 0.15]);
+    ear.add(m(BALL, fur, [0, 0.09, 0], [0.026, 0.1, 0.014]), m(BALL, pink, [0, 0.09, 0.008], [0.015, 0.075, 0.008]));
+    P.ears.push(ear);
+  }
+  P.tail = grp(P.body, [0, 0.19, -0.17]);
+  P.tail.add(m(BALL, '#fbf8f2', [0, 0, 0], 0.042));                 // cotton tail
+  addLegs(P, { hip: 0.12, spots: [[-0.04, 0.08, 1], [0.04, 0.08, 1], [-0.07, -0.07, 0], [0.07, -0.07, 0]], r0: 0.022, r1: 0.016, mat: fur, foot: 'paw', footMat: light });
+  for (const leg of P.legs) if (leg.userData.front) P.body.add(leg);  // lift with the body as it sits up
+  return P;
+}
+
+// Badger: low and stocky, grey back, black legs and belly, a white face with a black stripe
+// through each eye.
+function badger() {
+  const grey = '#8f8c92', dark = '#3b3640', white = '#f2eee8';
+  const P = base();
+  P.body.add(
+    m(BALL, grey, [0, 0.26, 0], [0.2, 0.15, 0.36]),
+    m(BALL, dark, [0, 0.19, 0.02], [0.17, 0.09, 0.31]),             // dark underside
+  );
+  P.neck = grp(P.body, [0, 0.27, 0.3]);
+  P.neck.add(m(BALL, grey, [0, 0, 0.04], [0.12, 0.11, 0.1]));
+  const head = P.head = grp(P.neck, [0, 0, 0.12]);
+  head.add(
+    m(BALL, white, [0, 0, 0.03], [0.1, 0.085, 0.13]),
+    m(CONE, white, [0, -0.02, 0.17], [0.05, 0.1, 0.045], [Math.PI / 2, 0, 0]),   // long snout
+    m(BALL, dark, [0, -0.02, 0.22], 0.026),                                       // nose
+    m(BALL, dark, [0.045, 0.035, 0.05], [0.032, 0.05, 0.13]),                     // black stripes through the eyes
+    m(BALL, dark, [-0.045, 0.035, 0.05], [0.032, 0.05, 0.13]),
+    m(BALL, '#fff6d0', [0.05, 0.035, 0.13], 0.011),                               // eyes glinting in the stripes
+    m(BALL, '#fff6d0', [-0.05, 0.035, 0.13], 0.011),
+  );
+  for (const sd of [-1, 1]) {
+    const ear = grp(head, [sd * 0.075, 0.06, -0.04]);
+    ear.add(m(BALL, white, [0, 0, 0], [0.03, 0.025, 0.015]));
+    P.ears.push(ear);
+  }
+  P.tail = grp(P.body, [0, 0.29, -0.34]);
+  P.tail.add(m(BALL, grey, [0, 0, -0.04], [0.05, 0.04, 0.09]));
+  addLegs(P, { hip: 0.16, spots: [[-0.12, 0.22, 1], [0.12, 0.22, 1], [-0.12, -0.22, 0], [0.12, -0.22, 0]], r0: 0.05, r1: 0.04, mat: dark, foot: 'paw', footMat: dark });
+  return P;
+}
+
+// Owl: round and tawny with a pale face disc, big yellow eyes, ear tufts and folded wings; perches on
+// fallen logs at night. wings: [left, right] groups that spread and flap as it flies off.
+function owl() {
+  const tawny = '#b49a7b', light = '#efe2cc', face = '#f5ecdc', dark = '#7c6650', claw = '#d8b46e';
+  const P = base();
+  P.body.add(
+    m(BALL, tawny, [0, 0.21, 0], [0.15, 0.2, 0.14]),
+    m(BALL, light, [0, 0.19, 0.06], [0.11, 0.15, 0.1]),               // speckled pale front
+  );
+  for (const [x, y] of [[-0.04, 0.24], [0.05, 0.2], [-0.02, 0.15], [0.03, 0.27], [0.0, 0.11], [-0.06, 0.19]]) {
+    P.body.add(m(BALL, dark, [x, y, 0.155], [0.012, 0.018, 0.008]));
+  }
+  P.neck = grp(P.body, [0, 0.37, 0]);
+  const head = P.head = grp(P.neck, [0, 0.05, 0]);
+  head.add(
+    m(BALL, tawny, [0, 0, 0], [0.135, 0.115, 0.125]),
+    m(BALL, face, [0, -0.005, 0.06], [0.11, 0.09, 0.06]),             // face disc
+    m(BALL, owlEye, [0.046, 0.012, 0.105], 0.036),                    // big bright yellow eyes
+    m(BALL, owlEye, [-0.046, 0.012, 0.105], 0.036),
+  );
+  // a soft yellow eye-shine round each eye, unfogged, so the eyes catch the eye from far off
+  for (const sd of [-1, 1]) {
+    const glow = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: haloTexture(), color: '#ffe14a', transparent: true, depthWrite: false, fog: false, blending: THREE.AdditiveBlending, opacity: 0.85,
+    }));
+    glow.scale.setScalar(0.3);
+    glow.position.set(sd * 0.046, 0.012, 0.12);
+    head.add(glow);
+  }
+  head.add(
+    m(BALL, BLACK, [0.046, 0.012, 0.133], 0.018),
+    m(BALL, BLACK, [-0.046, 0.012, 0.133], 0.018),
+    m(CONE, dark, [0, -0.04, 0.125], [0.016, 0.045, 0.016], [Math.PI * 0.85, 0, 0]),   // hooked beak
+  );
+  for (const sd of [-1, 1]) {
+    const ear = grp(head, [sd * 0.075, 0.09, 0]);
+    ear.add(m(CONE, tawny, [0, 0.03, 0], [0.028, 0.075, 0.02], [0, 0, -sd * 0.35]));    // ear tufts
+    P.ears.push(ear);
+  }
+  P.wings = [-1, 1].map((sd) => {
+    const w = grp(P.body, [sd * 0.135, 0.3, -0.01]);
+    w.add(
+      m(BALL, tawny, [sd * 0.02, -0.1, -0.01], [0.05, 0.15, 0.11]),
+      m(BALL, dark, [sd * 0.025, -0.2, -0.02], [0.04, 0.07, 0.09]),   // darker flight feathers
+    );
+    w.userData.side = sd;
+    return w;
+  });
+  P.tail = grp(P.body, [0, 0.07, -0.12]);
+  P.tail.add(m(BALL, dark, [0, 0, -0.03], [0.06, 0.025, 0.08], [-0.5, 0, 0]));
+  for (const sd of [-1, 1]) P.root.add(m(BALL, claw, [sd * 0.05, 0.012, 0.04], [0.03, 0.014, 0.045]));   // talons
+  P.legs = [];
+  P.hip = 0.05;
+  return P;
+}
+
+export const MODELS = { wolf, bear, witch, troll, deer, goat, moose, squirrel, hedgehog, rabbit, badger, owl };
 
 export function createCreature(kind, size) {
   const P = MODELS[kind]();
-  P.root.traverse((o) => { if (o.isMesh && o.material !== wolfEye && o.material !== P.tipMat && o.material !== P.lanternMat) o.castShadow = true; });
+  P.root.traverse((o) => { if (o.isMesh && o.material !== wolfEye && o.material !== owlEye && o.material !== P.tipMat && o.material !== P.lanternMat) o.castShadow = true; });
   P.root.scale.setScalar(size);
   return P;
 }

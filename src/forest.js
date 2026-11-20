@@ -435,7 +435,7 @@ function buildChunk(cx, cz) {
     const nc = Math.ceil(len / 0.6);
     for (let i = 0; i < nc; i++) {
       const t = (i + 0.5) / nc;
-      colliders.push({ x: ox + ax + (bx - ax) * t, z: oz + az + (bz - az) * t, r: r + 0.05, log: true });
+      colliders.push({ x: ox + ax + (bx - ax) * t, z: oz + az + (bz - az) * t, r: r + 0.05, log: true, top: yA + (yB - yA) * t + r * 0.95, yaw: a });
     }
   }
 

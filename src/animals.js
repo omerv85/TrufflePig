@@ -12,6 +12,10 @@ import { createCreature } from './creatures.js';
 //    through the dark; it charges, swings the club overhead and smacks the pig with it.
 //  - docile ones (deer, goat, moose) turn and flee. The squirrel dashes to the nearest tree,
 //    scurries up the trunk into the leaves and is gone. Silent, and not on the map.
+//    Small critters, day or night: the hedgehog curls into a spiky ball until the pig has gone,
+//    the rabbit zigzags off and dives into a burrow, the badger just waddles away.
+//    At night an owl sits on a fallen log, head turning to follow the pig, and flies off (with the
+//    wing-flap recording) if the pig comes too close.
 // At most one wolf, one bear, one witch and one docile animal are around at a time (and never more
 // than MAX_DANGER of the dangerous ones), and they keep apart.
 
@@ -73,6 +77,10 @@ export const SPECIES = {
   deer: { size: 1.0, walk: 1.2, run: 8, alert: 24, close: 12, calm: 34, spawn: [75, 90], barnKeep: 20 },
   goat: { size: 1.0, walk: 0.9, run: 6.5, alert: 16, close: 8, calm: 26, spawn: [75, 90], barnKeep: 20 },
   moose: { size: 1.1, walk: 1.0, run: 6.5, alert: 24, close: 12, calm: 34, spawn: [75, 90], barnKeep: 20 },
+  hedgehog: { size: 1.3, walk: 0.35, run: 0, alert: 9, close: 4.5, calm: 9, spawn: [35, 50], barnKeep: 12, curls: true },
+  rabbit: { size: 1.3, walk: 0.7, run: 5.5, alert: 18, close: 9, calm: 26, spawn: [45, 60], barnKeep: 12, hop: true, zigzag: true, burrows: true },
+  badger: { size: 1.1, walk: 0.6, run: 1.7, alert: 14, close: 7, calm: 18, spawn: [55, 70], barnKeep: 15, waddle: true },
+  owl: { size: 1.25, alert: 22, close: 9, calm: 30, spawn: [25, 65], perch: true, fly: 6 },
   squirrel: { size: 1.8, walk: 0.8, run: 5, alert: 10, close: 5, calm: 18, spawn: [55, 70], barnKeep: 15, hop: true, climbs: true },
 };
 
@@ -85,9 +93,17 @@ const SLOTS = [
   { kinds: ['troll'], first: 135, respawn: [30, 60], when: 'night' },
   // squirrels listed three times: half of the docile animals are squirrels
   { kinds: ['deer', 'goat', 'squirrel', 'squirrel', 'squirrel', 'moose'], first: 12, respawn: [8, 20] },
+  // small critters, day or night
+  { kinds: ['hedgehog', 'rabbit', 'badger'], first: 25, respawn: [10, 25] },
+  // the owl: only at night, always on a fallen log
+  { kinds: ['owl'], first: 95, respawn: [20, 45], when: 'night' },
 ];
 
 const rand = (a, b) => a + Math.random() * (b - a);
+const HOLE_GEO = new THREE.CircleGeometry(0.17, 10).rotateX(-Math.PI / 2);
+const HOLE_MAT = new THREE.MeshBasicMaterial({ color: '#2e2420' });
+const RIM_GEO = new THREE.RingGeometry(0.15, 0.3, 10).rotateX(-Math.PI / 2);
+const RIM_MAT = new THREE.MeshLambertMaterial({ color: '#a8866c', polygonOffset: true, polygonOffsetFactor: -1 });
 const pick = (a) => a[Math.floor(Math.random() * a.length)];
 const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 const right = (h) => [Math.cos(h), -Math.sin(h)]; // the pig's right-hand direction
@@ -111,6 +127,7 @@ class Creature {
     this.inMap = false;
     this.howlCool = 0;
     this.idleT = 0;
+    this.curl = 0;                 // 0..1 hedgehog rolled into a ball
     this.growl = null;
     this.growlT = 0;
     this.seed = Math.random() * 100;
@@ -142,6 +159,33 @@ class Creature {
 
     let targetSpeed = 0, snarl = 0, look = 0;
     switch (this.state) {
+      case 'perch': // the owl on its log: watches the pig, and takes off if it comes too close
+        if (dist > mgr.despawn) { this.gone = true; return; }
+        if (dist < sp.alert) {
+          look = 1;
+          // past where its head can turn: it shuffles round on the log to face the pig
+          if (Math.abs(wrap(toPig - this.yaw)) > 1.6) this.turnTo(toPig, 1.5, dt);
+        }
+        if (dist < sp.close) {
+          this.flyDir = toPig + Math.PI + (Math.random() - 0.5) * 0.8;
+          mgr.audio.wings?.({ vol: Math.max(0.25, 1 - dist / 30), pan: this.pan(player) });
+          this.setState('fly');
+        }
+        break;
+      case 'fly': // up and away over the trees
+        this.turnTo(this.flyDir, 6, dt);
+        this.pos.x += Math.sin(this.yaw) * sp.fly * Math.min(1, this.stateT * 2) * dt;
+        this.pos.z += Math.cos(this.yaw) * sp.fly * Math.min(1, this.stateT * 2) * dt;
+        this.pos.y += (this.stateT < 0.4 ? 3.2 : 1.6) * dt;
+        if (this.stateT > 4.5) { this.gone = true; return; }
+        break;
+      case 'curl': // hedgehog: a still, spiky ball until the pig has gone
+        if (dist > sp.calm && this.stateT > 2.5) this.setState('walk');
+        break;
+      case 'burrow': // rabbit: down the hole and gone
+        this.pos.y = terrainHeight(this.pos.x, this.pos.z) - this.stateT * 0.7;
+        if (this.stateT > 0.45) { this.gone = true; return; }
+        break;
       case 'walk': {
         if (dist > mgr.despawn) { this.gone = true; return; }
         const idle = sp.sounds?.idle;
@@ -189,8 +233,11 @@ class Creature {
         break;
       }
       case 'flee': // docile: bolt away from the pig and vanish into the forest
-        this.turnTo(toPig + Math.PI, 5, dt);
+        // (the rabbit zigzags, the badger just waddles off until it's left alone)
+        this.turnTo(toPig + Math.PI + (sp.zigzag ? Math.sin(this.stateT * 6 + this.seed) * 0.8 : 0), sp.zigzag ? 9 : 5, dt);
         targetSpeed = sp.run;
+        if (sp.waddle && dist > sp.calm) { this.setState('walk'); break; }
+        if (sp.burrows && this.stateT > this.burrowAt) { this.mgr.addHole(this.pos.x, this.pos.z); this.setState('burrow'); break; }
         if (dist > 85 || this.stateT > 15) { this.gone = true; return; }
         break;
       case 'totree': { // squirrel: dash to the trunk
@@ -267,7 +314,7 @@ class Creature {
     if (this.state !== 'alert') this.stopGrowl(0.35);
 
     if (this.state !== 'climb') this.speed += (targetSpeed - this.speed) * (1 - Math.exp(-6 * dt));
-    if (this.state !== 'leap' && this.state !== 'climb') {
+    if (!['leap', 'climb', 'perch', 'fly', 'burrow'].includes(this.state)) {
       this.pos.x += Math.sin(this.yaw) * this.speed * dt;
       this.pos.z += Math.cos(this.yaw) * this.speed * dt;
       // (a squirrel near its tree skips collisions so it can reach the bark)
@@ -278,11 +325,26 @@ class Creature {
     const k = 1 - Math.exp(-8 * dt);
     this.snarl += (snarl - this.snarl) * k;
     this.look += (look - this.look) * k;
-    this.animate(dt);
+    this.curl += ((this.state === 'curl' ? 1 : 0) - this.curl) * (1 - Math.exp(-10 * dt));
+    this.animate(dt, player);
+    if (this.sp.curls) this.curlUp();
+  }
+
+  // Hedgehog rolled into a ball: head and legs tucked in, spines all round.
+  curlUp() {
+    const m = this.m, c = this.curl;
+    if (c < 0.001) return;
+    m.head.scale.setScalar(1 - 0.85 * c);
+    m.neck.position.z = 0.13 - 0.07 * c;
+    for (const leg of m.legs) leg.scale.y = 1 - 0.9 * c;
+    m.body.position.y = -0.045 * c;
+    m.body.scale.set(1, 1 + 0.3 * c, 1 - 0.15 * c);
   }
 
   // Docile animals flee; a squirrel heads for the nearest tree that isn't toward the pig.
   escape(player) {
+    if (this.sp.curls) { this.setState('curl'); return; }
+    if (this.sp.burrows) this.burrowAt = rand(1.4, 2.4);
     if (this.sp.climbs) {
       let best = null, bestScore = Infinity;
       for (const c of this.mgr.forest.nearbyColliders(this.pos.x, this.pos.z, TREE_SEARCH)) {
@@ -456,7 +518,29 @@ class Creature {
     this.flame = fl;
   }
 
-  animate(dt) {
+  // The owl: perched upright, its head swivelling round to keep the pig in view (owls turn theirs
+  // a long way); flying, its wings spread and beat, body tipped forward.
+  animateOwl(dt, player) {
+    const m = this.m, t = performance.now() / 1000;
+    m.root.position.set(this.pos.x, this.pos.y, this.pos.z);
+    m.root.rotation.set(0, this.yaw, 0);
+    const flying = this.state === 'fly';
+    let want = Math.sin(t * 0.5 + this.seed) * 0.9;                  // idly looking about
+    if (this.look > 0.05 && player) {
+      const toPig = Math.atan2(player.pos.x - this.pos.x, player.pos.z - this.pos.z);
+      want = Math.max(-2.3, Math.min(2.3, wrap(toPig - this.yaw)));
+    }
+    if (flying) want = 0;
+    m.head.rotation.y += (want - m.head.rotation.y) * (1 - Math.exp(-6 * dt));
+    m.head.rotation.z = flying ? 0 : Math.sin(t * 0.7 + this.seed) * 0.15 * this.look;   // a curious head tilt
+    const flap = flying ? Math.sin(this.stateT * 22) : 0;
+    for (const w of m.wings) w.rotation.z = w.userData.side * (flying ? 1.35 + flap * 0.8 : 0);
+    m.body.rotation.x = flying ? 0.6 : 0;
+    m.root.children.forEach((c) => { if (c.isMesh) c.visible = !flying || this.stateT < 0.15; });   // talons tuck up
+  }
+
+  animate(dt, player) {
+    if (this.kind === 'owl') return this.animateOwl(dt, player);
     if (this.kind === 'witch') return this.animateWitch(dt);
     if (this.kind === 'troll') return this.animateTroll(dt);
     const m = this.m, sp = this.sp, sn = this.snarl, look = this.look;
@@ -537,10 +621,25 @@ export class Animals {
     // there's no troll), so the forest's shaders don't need rebuilding when a troll turns up.
     this.lanternLight = new THREE.PointLight('#ffb862', 0, 16, 1.6);
     scene.add(this.lanternLight);
+    this.holes = []; // rabbit burrows: a dark hole in a ring of earth, left for a while after it dives in
     this.reset();
   }
 
+  // A burrow where a rabbit dived in.
+  addHole(x, z) {
+    const g = new THREE.Group();
+    g.add(new THREE.Mesh(HOLE_GEO, HOLE_MAT));
+    const rim = new THREE.Mesh(RIM_GEO, RIM_MAT);
+    rim.position.y = 0.01;
+    g.add(rim);
+    g.position.set(x, terrainHeight(x, z) + 0.02, z);
+    this.scene.add(g);
+    this.holes.push({ g, t: 40 });
+  }
+
   reset() {
+    for (const h of this.holes) this.scene.remove(h.g);
+    this.holes = [];
     for (const c of this.list) c.remove();
     this.list = [];
     this.slots = SLOTS.map((s) => ({ ...s, timer: s.first, c: null }));
@@ -567,6 +666,7 @@ export class Animals {
   // Ahead and off to one side of the pig, so it crosses in front; away from the barn and the others.
   spawn(kind, player) {
     const sp = SPECIES[kind];
+    if (sp.perch) return this.spawnPerched(kind, player);
     for (let tries = 0; tries < 10; tries++) {
       const a = player.heading + (Math.random() < 0.5 ? -1 : 1) * rand(0.45, 1.25);
       const d = rand(...sp.spawn);
@@ -576,6 +676,30 @@ export class Animals {
       return this.add(kind, x, z, player);
     }
     return null;
+  }
+
+  // The owl lands on a fallen log some way off, preferably ahead of the pig.
+  spawnPerched(kind, player) {
+    const sp = SPECIES[kind], fx = -Math.sin(player.heading), fz = -Math.cos(player.heading);
+    const spots = [];
+    for (const c of this.forest.nearbyColliders(player.pos.x, player.pos.z, sp.spawn[1])) {
+      if (!c.log || c.top === undefined) continue;
+      const dx = c.x - player.pos.x, dz = c.z - player.pos.z, d = Math.hypot(dx, dz);
+      if (d < sp.spawn[0] || d > sp.spawn[1] || (dx * fx + dz * fz) / d < -0.3) continue;
+      if (this.list.some((o) => Math.hypot(o.pos.x - c.x, o.pos.z - c.z) < 20)) continue;
+      spots.push(c);
+    }
+    if (!spots.length) return null;
+    const c = pick(spots);
+    const o = this.add(kind, c.x, c.z, player);
+    o.pos.y = c.top;
+    // sitting across the log, facing the pig's side of it
+    const toPig = Math.atan2(player.pos.x - c.x, player.pos.z - c.z);
+    o.yaw = c.yaw + Math.PI / 2;
+    if (Math.abs(wrap(toPig - o.yaw)) > Math.PI / 2) o.yaw += Math.PI;
+    o.setState('perch');
+    o.animate(0, player);
+    return o;
   }
 
   add(kind, x, z, player) {
@@ -591,6 +715,7 @@ export class Animals {
   spawnAt(kind, x, z, player) {
     const slot = this.slots.find((s) => s.kinds.includes(kind));
     if (slot.c) this.drop(slot);
+    if (SPECIES[kind].perch) { slot.c = this.spawnPerched(kind, player); return slot.c; } // (on the nearest suitable log)
     slot.c = this.add(kind, x, z, player);
     slot.c.yaw = Math.atan2(player.pos.x - x, player.pos.z - z) + Math.PI / 2;
     return slot.c;
@@ -611,6 +736,8 @@ export class Animals {
       troll.m.lanternCore.getWorldPosition(this.lanternLight.position);
       this.lanternLight.intensity = 7 * (troll.flame ?? 1);
     } else this.lanternLight.intensity = 0;
+    for (const h of this.holes) if ((h.t -= dt) <= 0) this.scene.remove(h.g);
+    this.holes = this.holes.filter((h) => h.t > 0);
     for (const slot of this.slots) {
       if (!slot.c) {
         slot.timer -= dt;

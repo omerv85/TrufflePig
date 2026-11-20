@@ -22,7 +22,8 @@ using the minimap. **Phones play in landscape** (an upright phone gets a "Turn y
 
 Danger: a **wolf** and a **bear** prowl the forest by day, a **witch** and a **troll** by night (never more than two of
 them around at once). Getting
-too close to any of them ends the game (game-over screen with Share and New game). Docile animals (deer, goat, squirrel, moose) wander too: they stare, then flee.
+too close to any of them ends the game (game-over screen with Share and New game). Docile animals (deer, goat, squirrel, moose; hedgehog, rabbit, badger; an owl on a log at night) wander too: they
+stare, then flee (or curl up, burrow, waddle off, fly away).
 
 ## Files
 
@@ -66,7 +67,10 @@ voice is recorded.
   pointy boots, a wand with a glowing green tip, `arm`/`wand`/`tip`/`tipMat`), troll (about 3 m tall, the biggest
   creature: hunched, mossy grey-green, big nose, tusks, drooping ears, yellow eyes, loincloth; `armL`/`lantern`/
   `lanternCore`/`halo` (the lantern glow and halo ignore fog so it shows from afar), `arm`/`club`/`clubLen`), deer (antlers, white tail), goat (white,
-  horns, beard), squirrel (bushy tail), moose (palmate antlers, dewlap).
+  horns, beard), squirrel (bushy tail, back haunches; its front legs hang from the body so they lift as it sits up),
+  moose (palmate antlers, dewlap), hedgehog (a dome of pale-tipped spines, pointy tan face), rabbit (long pink-lined
+  ears, cotton tail, front legs on the body like the squirrel), badger (grey, black legs, white face with black eye
+  stripes), owl (tawny, pale face disc, big yellow eyes, ear tufts, `wings` that spread and flap; no legs, talons).
 - `src/audio.js`: `Ambience`: synthesized breeze, leaf gusts, insect drone, cicadas, birds, brook, splashes,
   footsteps, digging, chime; recorded pig calls (`loadSamples`, `playSample`).
 - `assets/sounds/*.mp3`: pig recordings from Pixabay (Pixabay Content License; credits in `README.md`):
@@ -309,6 +313,19 @@ Animals (the owner's design)
   raises its white tail as it bolts. The squirrel instead dashes to the nearest tree within 22 m (preferring ones away
   from the pig), scurries up the trunk nose-up and vanishes into the leaves (tree colliders carry `leaf`, the canopy
   height); if it gets blocked on the way it just bolts like the others. They vanish once 85 m away. Harmless, silent, and not on the minimap.
+- Small critters (owner's request), day or night, one at a time in their own slot (first after 25 s, then 10-25 s after
+  the last one left; appear 35-70 m away): the **hedgehog** snuffles slowly along, lifts its head to stare, and within
+  4.5 m curls into a spiky ball (`curl`, `curlUp`) until the pig is 9 m away, then uncurls and walks on. The
+  **rabbit** hops, sits up to stare (18 m), and within 9 m zigzags off and after 1.4-2.4 s dives into a burrow
+  (`burrow` state; `animals.addHole` leaves a dark hole in a ring of earth for 40 s). The **badger** waddles away
+  slowly (1.7 m/s) when the pig comes within 7 m, and goes back to wandering once it's 18 m off. All silent.
+- Owl (owner's request): **only at night, always perched on a fallen log** (`spawnPerched` picks a log collider
+  25-65 m away, mostly ahead; log colliders carry `top` and `yaw`). First after 95 s, then 20-45 s after the last
+  left. It sits across the log facing the pig's side, head swivelling to follow the pig (within 22 m; if the pig
+  goes round behind it, it shuffles round on the log). Bright yellow eyes, unlit and unfogged, with a soft glow sprite
+  each (`owlEye`, owner's request) so it can be spotted from afar; within 9 m it flies up and away with
+  the birds' wing-flap recording (`audio.wings`), gone after 4.5 s. `spawnAt('owl', ...)` puts it on a suitable log
+  near the pig (null if there's none).
 - Wolf: only one at a time. The first comes after `FIRST_DELAY` 35 s of play, later ones 25-50 s after the last one
   left. It appears 86-96 m away (lost in the haze; its eyes are fogged too), ahead and off to one side, and walks slowly (1.1 m/s) **mostly perpendicular to the
   pig's heading** (a gentle wobble), so it crosses in front of the pig. It keeps 40 m from the barn and leaves for
